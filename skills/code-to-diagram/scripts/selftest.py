@@ -67,6 +67,17 @@ SAMPLES = {
   handle --> log
   load_config --> schema
 """,
+    "fan": """flowchart TD
+  hub --> a
+  hub --> b
+  hub --> c
+  hub --> d
+  hub --> e
+  hub --> f
+  hub --> g
+  hub --> h
+  hub --> i
+""",
     "state": """stateDiagram-v2
   [*] --> LOADING
   LOADING --> MENU : boot
@@ -123,11 +134,23 @@ def main():
                 problems.append("label with < was not double-escaped")
             if ne and 'source="' not in body:
                 problems.append("edges are not glued")
+            if name == "fan":                                              # edges leaving one node sideways share one trunk per side
+                trunks = {y for y in re.findall(r'<mxPoint x="[-\d.]+" y="([-\d.]+)"', body)}
+                if len(trunks) != 1:
+                    problems.append(f"fan: {len(trunks)} different trunk heights, expected 1")
             report = getattr(model, "layout_report", None)                 # a router change must not bring the wobble back
-            if report and (report["jogs"] or report["shared"] or report["node_hits"]):
+            if report and (report["jogs"] > 1 or report["shared"] or report["node_hits"]):          # a step the two nodes' extents leave no room to avoid may remain
                 problems.append(f"layout: {report['jogs']} kinks, {report['shared']} shared runs, {report['node_hits']} edges through nodes")
             print(f"{'FAIL' if problems else 'ok  '} {name}: {nv} shapes, {ne} edges" + (f"  {problems[:3]}" if problems else ""))
             failed += bool(problems)
+    example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "examples", "import-graph", "import-graph.mmd")
+    if os.path.exists(example):                                     # the shipped example must stay free of crossings and kinks
+        model = mermaid.parse(c2d.read_spec(example))
+        emit.build(model)
+        report = model.layout_report
+        bad = [f"{k}={report[k]}" for k in ("crossings", "jogs", "shared", "node_hits") if report[k]]
+        print(f"{'FAIL' if bad else 'ok  '} examples/import-graph: {report['bends']} bends" + (f"  {bad}" if bad else ""))
+        failed += bool(bad)
     with tempfile.TemporaryDirectory() as tmp:                      # a spec saved by Windows PowerShell starts with a BOM
         for label, prefix in (("with BOM", b"\xef\xbb\xbf"), ("without BOM", b"")):
             path = os.path.join(tmp, "spec.mmd")

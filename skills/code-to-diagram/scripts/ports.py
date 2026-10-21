@@ -124,8 +124,9 @@ def _far(other, side, tb):
 
 
 class _End:
-    def __init__(self, idx, end, side, box, lo, hi, other, tb):
+    def __init__(self, idx, end, side, box, lo, hi, other, tb, bundle=None):
         self.idx, self.end, self.side, self.lo, self.hi, self.other = idx, end, side, lo, hi, other
+        self.bundle = bundle                                   # ends that leave through one shared port (a fan-out's stem)
         self.far = _far(other, side, tb)                        # the far end's own stretch along this axis
         self.pos = None
         self.mates = None                                      # the ends sharing this side
@@ -158,16 +159,31 @@ def _faces(r, m):
     return m is not None and (m.side in "tb") == (r.side in "tb")
 
 
-def _place(sides, mate):
-    """Greedy placement: the busiest sides first, spread PITCH apart; every other end takes the coordinate of the end it meets."""
-    for group in sorted(sides, key=len, reverse=True):
-        want = {}
-        for r in group:
-            m = mate(r)
-            want[id(r)] = min(max(m.pos, r.lo), r.hi) if _faces(r, m) and m.pos is not None else r.first_wish()
-        group.sort(key=lambda r: (r.order, want[id(r)], r.idx))
-        for r, p in zip(group, _fit([want[id(r)] for r in group], group[0].lo, group[0].hi)):
+def _set(group, mate):
+    """Place the ends of one side: PITCH apart, each as near as it can be to the end it meets. The ends of a bundle share
+    one port: together they take one slot."""
+    want = {}
+    for r in group:
+        m = mate(r)
+        want[id(r)] = min(max(m.pos, r.lo), r.hi) if _faces(r, m) and m.pos is not None else r.first_wish()
+    group.sort(key=lambda r: (r.order, want[id(r)], r.idx))
+    slots = []
+    for r in group:
+        if r.bundle is not None:
+            mine = next((u for u in slots if u[0].bundle == r.bundle), None)
+            if mine:
+                mine.append(r)
+                continue
+        slots.append([r])
+    for u, p in zip(slots, _fit([want[id(u[0])] for u in slots], group[0].lo, group[0].hi)):
+        for r in u:
             r.pos = p
+
+
+def _place(sides, mate):
+    """Greedy placement: the busiest sides first, every end taking the coordinate of the end it meets if that is placed."""
+    for group in sorted(sides, key=len, reverse=True):
+        _set(group, mate)
 
 
 def _kinks(group, mate):
@@ -200,32 +216,69 @@ def _snap(recs, mate):
     """Two ends still a few px apart: line them up if the room beside their neighbours allows."""
     for r in recs.values():
         m = mate(r)
-        if r.end != "exit" or not _faces(r, m) or not 0.0005 < abs(r.pos - m.pos) < NEAR:
+        if r.end != "exit" or r.bundle is not None or not _faces(r, m) or not 0.0005 < abs(r.pos - m.pos) < NEAR:
             continue
         t = (r.pos + m.pos) / 2
         if r.lo <= t <= r.hi and m.lo <= t <= m.hi and all(abs(o.pos - t) >= PITCH - 0.5 for e in (r, m) for o in e.mates if o is not e):
             r.pos = m.pos = t
 
 
-def assign(B, ends, kinds=None, tb=True):
-    """-> {(idx, end): coordinate along the side}. kinds {node: shape kind}, tb: the layout runs top-down."""
+def _misfit(recs, mate):
+    """How badly the edges that should run straight between two ports are off: a step too small to look like a turn
+    counts most, a clean elbow least."""
+    total = 0
+    for r in recs.values():
+        m = mate(r)
+        if r.end == "exit" and _faces(r, m):
+            d = abs(r.pos - m.pos)
+            total += 0 if d < 0.5 else 4 if d < NEAR else 1
+    return total
+
+
+def _relax(recs, sides, mate, rounds=3):
+    """The greedy placement guessed where a far end would sit when that end was not placed yet. Placing every side again,
+    now that all ports are known, pulls the two ends of an edge into line. Keeps the best of the rounds."""
+    best = (_misfit(recs, mate), {k: r.pos for k, r in recs.items()})
+    for _ in range(rounds):
+        for group in sorted(sides, key=len, reverse=True):
+            _set(group, mate)
+        _shift(sides, mate)
+        _snap(recs, mate)
+        cost = _misfit(recs, mate)
+        if cost < best[0]:
+            best = (cost, {k: r.pos for k, r in recs.items()})
+    for k, r in recs.items():
+        r.pos = best[1][k]
+
+
+def assign(B, ends, kinds=None, tb=True, bundles=None):
+    """-> {(idx, end): coordinate along the side}. kinds {node: shape kind}, tb: the layout runs top-down.
+    bundles {(idx, end): key}: ends with the same key leave through one port."""
     kinds = kinds or {}
+    bundles = bundles or {}
     recs, sides = {}, []
     for (n, side), lst in ends.items():
         lo, hi = _usable(B[n], side, kinds.get(n), tb)
         group = []
         for idx, end, other in lst:
-            r = _End(idx, end, side, B[n], lo, hi, other, tb)
+            r = _End(idx, end, side, B[n], lo, hi, other, tb, bundles.get((idx, end)))
             recs[(idx, end)] = r
             group.append(r)
         for r in group:
             r.mates = group
         sides.append(group)
 
-    def mate(r):                                        # the other end of the edge, unless a corridor lies between the two
-        return None if r.other[2] == 0 and r.other[3] == 0 else recs.get((r.idx, "entry" if r.end == "exit" else "exit"))
+    def mate(r):
+        """The other end of the edge, unless a corridor lies between the two. A corridor of one single column is no
+        obstacle to lining the two ends up: the column follows them (routing._square)."""
+        twin = recs.get((r.idx, "entry" if r.end == "exit" else "exit"))
+        if r.other[2] or r.other[3]:
+            return twin
+        one_column = twin is not None and not (twin.other[2] or twin.other[3]) and abs(twin.other[0] - r.other[0]) < 0.5
+        return twin if one_column and (r.side in "tb") == (twin.side in "tb") and r.bundle is None and twin.bundle is None             and r.lo <= r.far[0] <= r.hi and twin.lo <= twin.far[0] <= twin.hi else None
 
     _place(sides, mate)
     _shift(sides, mate)
     _snap(recs, mate)
+    _relax(recs, sides, mate)
     return {k: r.pos for k, r in recs.items()}

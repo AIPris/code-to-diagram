@@ -43,9 +43,11 @@ what the diagram should say), and deterministic scripts do the rest:
 - **Mermaid in, draw.io out.** The agent never writes XML or coordinates. A 30-node diagram is a few lines of spec
   instead of thousands of output tokens.
 - **Automatic layered layout with straight lines.** Ranks, node order, container sizes and a lane for every long edge
-  are computed for you. Ports line up so that edges run straight, long edges leave a node from the side that faces
-  their lane, and the result is measured: edges running through nodes, crossings, kinks, edges drawn on top of each
-  other, bends and labels lying on lines are reported, with a hint on what to cut.
+  are computed for you. Ports line up so that edges run straight, a node with many outgoing links draws a tree (one
+  stem, one shared trunk) instead of a comb of parallel lines, and edges that cross others get a second route (other
+  sides, free ports) when that measures better. Several layouts are tried and measured, and the best one is kept.
+  What the build reports: edges running through nodes, crossings, kinks, detours, edges drawn on top of each other,
+  bends and labels lying on lines, with a hint on what to cut.
 - **Genuinely editable.** The `.drawio` is plain uncompressed XML. Edges are glued to their shapes (move a box and
   the arrows follow) and groups are real containers, so you can keep working in draw.io, diagrams.net or the VS Code
   draw.io extension.
@@ -238,9 +240,9 @@ flowchart TD
 | --- | --- |
 | `c2d.py` | The command line: `build`, `deps`, `check`, `digest`, `png` |
 | `mermaid.py` | Parses the supported Mermaid subset and reports unsupported lines by number |
-| `layout.py` | Layered layout: ranks, node order, coordinates, container sizes, lanes for long edges |
-| `routing.py`, `ports.py`, `reroute.py` | Edge routing: sides, ports that line up, tracks between ranks, detours around nodes |
-| `metrics.py` | The layout measurements: crossings, bends, kinks, overlaps |
+| `layout.py` | Layered layout: ranks, node order, coordinates (with a pass that lets linked nodes overlap enough for straight lines), container sizes, lanes for long edges |
+| `routing.py`, `ports.py`, `reroute.py` | Edge routing: sides, ports that line up, fan trunks, tracks between ranks, second routes around nodes and past crossings |
+| `metrics.py` | The layout measurements: crossings, bends, kinks, detours, overlaps |
 | `sequence.py`, `emit.py`, `labels.py`, `drawio_lib.py` | Turn the model into draw.io XML |
 | `validate_drawio.py` | Structural checks: glued edges, overlaps, clipped rows, label escaping |
 | `facts.py`, `deps.py` | Name and import checks against the source, and the import scanner |

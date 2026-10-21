@@ -10,8 +10,8 @@ Work is done top-down (a left-right layout is the same picture turned over its d
 from collections import defaultdict
 
 from metrics import SHARE, _through
-from ports import MARGIN, NEAR, assign, fraction
-from reroute import fix as reroute_fix
+from ports import MARGIN, NEAR, _far, _usable, assign, fraction
+from reroute import fix as reroute_fix, untangle
 
 LAND = 20      # a target this far past the source's edge is reached from the source's side (an L-shaped route)
 
@@ -106,6 +106,39 @@ def _unshare(info, edges, B, few):
                 break
 
 
+FAN = 3      # edges that leave a node towards the same side, from this many on, share one stem and one trunk
+
+
+def _fans(info, edges, B, labelled, kinds, styles):
+    """Edges that leave one node downwards, none of them able to run straight, would each take a track of their own: a
+    comb of parallel lines, long ones when a target is far away. From FAN of them on (per side) they leave through one
+    port and share one horizontal run, the way a tree is drawn. An edge that can run straight keeps its own port, and
+    labelled edges stay apart (a label must belong to one line), and so do edges of different style (solid, dashed,
+    thick: on a shared line only one of them would show). Returns {edge idx: (node, 'l' or 'r', style)}."""
+    groups = defaultdict(list)
+    for idx, e in info.items():
+        a, _, _ = edges[idx]
+        if e["es"] not in "blr" or labelled[idx] or a == edges[idx][1] or kinds.get(a) in FEW:
+            continue
+        nx, ny, nw, nh = e["nxt"]
+        if ny + nh / 2 <= B[a][1] + B[a][3] / 2:                       # towards a lower rank only
+            continue
+        lo, hi = _usable(B[a], "b", kinds.get(a), True)
+        f0, f1 = _far(e["nxt"], "b", True)
+        if f1 < lo or f0 > hi:
+            groups[(a, "l" if f1 < lo else "r", styles[idx])].append(idx)
+    out = {}
+    for key, lst in groups.items():
+        if len(lst) < FAN:
+            continue
+        for idx in lst:
+            e = info[idx]
+            if e["es"] in "lr":                                        # out of the bottom instead of a side
+                e["es"], e["sideways"] = "b", (False, e["sideways"][1])
+            out[idx] = key
+    return out
+
+
 def _stations(pts):
     """Corridor waypoints (two per rank crossed: entering and leaving its band) -> [(x, y_enter, y_leave)] in path order."""
     out = []
@@ -160,8 +193,10 @@ def _verticals(plan, edges):
 
 
 def _covers(x, y0, y1, fixed, idx):
-    """Does a vertical line at x from y0 to y1 lie on top of a vertical piece of another route?"""
-    return any(other != idx and abs(x - fx) < SHARE and min(max(y0, y1), hi) - max(min(y0, y1), lo) > 6 for fx, lo, hi, other in fixed)
+    """Does a vertical line at x from y0 to y1 lie on top of a vertical piece of another route? idx: the route, or the
+    set of routes of a bundle, which may share their pieces."""
+    own = idx if isinstance(idx, (set, frozenset)) else {idx}
+    return any(other not in own and abs(x - fx) < SHARE and min(max(y0, y1), hi) - max(min(y0, y1), lo) > 6 for fx, lo, hi, other in fixed)
 
 
 def _on_top(y, cols, fixed, idx):
@@ -186,6 +221,36 @@ def _dodge(p, idx, fixed, others):
             q[0] = x
 
 
+def _share_trunks(runs, plan):
+    """The first horizontal run of the edges of one fan (_fans) becomes a single run: one trunk, at one height, that all
+    of them leave the stem by. Runs that cannot agree on a height (their gaps do not overlap) stay as they are."""
+    trunks, out = defaultdict(list), []
+    for r in runs:
+        (idx, j), = r[5]
+        key = plan[idx].get("bundle")
+        if key and j == 0 and not plan[idx]["sideways"][0]:
+            trunks[key].append(r)
+        else:
+            out.append(r)
+    for rs in trunks.values():
+        top, bot = max(r[2] for r in rs), min(r[3] for r in rs)
+        if len(rs) == 1 or top > bot:
+            out += rs
+        else:
+            out.append([min(r[0] for r in rs), max(r[1] for r in rs), top, bot, frozenset().union(*(r[4] for r in rs)),
+                        [k for r in rs for k in r[5]], max(r[6] for r in rs), [c for r in rs for c in r[7]]])
+    return out
+
+
+def _square(p, others):
+    """A route down one corridor column whose two ports lie in line: the column moves onto them, and the route is one
+    straight line (instead of a corridor a few px beside it, which would be a kink at each end). Only if that stays clear."""
+    st, (side_out, side_in) = p["stations"], p["sideways"]
+    (x0, y0), (x1, y1) = p["exit_at"], p["entry_at"]
+    if len(st) == 1 and not (side_out or side_in) and abs(x0 - x1) < 0.5 and 0.5 < abs(st[0][0] - x0) < NEAR             and _clear([(x0, y0), (x0, y1)], others):
+        st[0][0] = x0
+
+
 def _tracks(plan, B, edges, labelled, solid, skip):
     """Routes through corridors, and straight-down routes between two ranks, change column in the gap between ranks.
     Left to draw.io they all do it at the middle of the gap, on top of each other, or hugging a node's top edge. Each
@@ -200,6 +265,7 @@ def _tracks(plan, B, edges, labelled, solid, skip):
             continue
         s, t = B[a], B[b]
         (x0, y0), (x1, y1) = p["exit_at"], p["entry_at"]
+        _square(p, [box for k, box in solid.items() if k not in skip(a, b)])
         _dodge(p, idx, fixed, [box for k, box in solid.items() if k not in skip(a, b)])
         st, (side_out, side_in) = p["stations"], p["sideways"]
         xs = ([] if side_out else [x0]) + [q[0] for q in st] + ([] if side_in else [x1])
@@ -212,22 +278,23 @@ def _tracks(plan, B, edges, labelled, solid, skip):
                 continue
             lo, hi = sorted((leave[j + skipped], enter[j + skipped]))
             ranges[(idx, j)] = (lo + 6, hi - 6)
-            runs.append([min(xs[j], xs[j + 1]), max(xs[j], xs[j + 1]), lo + 6, hi - 6, idx, j, 18 if labelled[idx] else 9,
-                         (xs[j], xs[j + 1], leave[j + skipped], enter[j + skipped])])
+            runs.append([min(xs[j], xs[j + 1]), max(xs[j], xs[j + 1]), lo + 6, hi - 6, frozenset({idx}), [(idx, j)], 18 if labelled[idx] else 9,
+                         [(xs[j], xs[j + 1], leave[j + skipped], enter[j + skipped])]])
             p["_legs"].append((j, xs[j], xs[j + 1]))
         p["_ends"] = ((x0, y0), (x1, y1))
         p["_start"] = xs[0]
     placed, ys = [], {}
-    for lo, hi, top, bot, idx, j, step, cols in sorted(runs, key=lambda r: (r[0], r[1])):
+    for lo, hi, top, bot, who, keys, step, cols in sorted(_share_trunks(runs, plan), key=lambda r: (r[0], r[1])):
         mid = (top + bot) / 2
         pick = mid
         for k in range(14):
             y = mid + (-1) ** k * ((k + 1) // 2) * step
-            if top <= y <= bot and not any(abs(y - py) < step - 1 and lo < phi and hi > plo for plo, phi, py in placed) and not _on_top(y, cols, fixed, idx):
+            if top <= y <= bot and not any(abs(y - py) < step - 1 and lo < phi and hi > plo for plo, phi, py in placed)                     and not any(_on_top(y, c, fixed, who) for c in cols):
                 pick = y
                 break
         placed.append((lo, hi, pick))
-        ys[(idx, j)] = pick
+        for key in keys:
+            ys[key] = pick
     for idx, p in plan.items():
         legs, ends, start = p.pop("_legs", []), p.pop("_ends", None), p.pop("_start", None)
         p.pop("stations", None)
@@ -268,11 +335,13 @@ def _tracks(plan, B, edges, labelled, solid, skip):
         p["points"] += route()
 
 
-def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=None, kinds=None):
+def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=None, kinds=None, styles=None, tidy=False):
     """For every edge (src, tgt, rev): {exit, entry: (fx, fy) anchor fractions, points: absolute waypoints}.
     Ends that share a node side are spread along it (ports.assign) and line up with the end they connect to, so edges run straight.
     parents {id: container id}: containers other than an edge's own ancestors count as obstacles, like nodes.
-    labelled: per edge, does it carry a label. kinds {node: shape kind}: where on its sides an edge can attach (ports.half)."""
+    labelled: per edge, does it carry a label. kinds {node: shape kind}: where on its sides an edge can attach (ports.half).
+    styles: per edge, whatever makes it look different (line, arrowheads): only edges that look alike share a trunk.
+    tidy: also give edges that cross others a second route (reroute.untangle), which takes longer."""
     tb = direction in ("TB", "TD", "BT")
     flip = (lambda b: b) if tb else (lambda b: (b[1], b[0], b[3], b[2]))
     pt = (lambda p: p) if tb else (lambda p: (p[1], p[0]))
@@ -290,6 +359,7 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
 
     solid = B
     labelled = labelled or [False] * len(edges)
+    styles = styles or [None] * len(edges)
     plan, info, ends = {}, {}, defaultdict(list)
     for idx, (a, b, _) in enumerate(edges):
         s, t = B[a], B[b]
@@ -311,13 +381,14 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
             nxt, prv = t, s
         info[idx] = dict(es=es, et=et, st=st, sideways=sideways, nxt=nxt, prv=prv, others=others)
     _unshare(info, edges, B, {n for n, k in kinds.items() if k in FEW})
+    fans = _fans(info, edges, B, labelled, kinds, styles)
     for idx, e in info.items():
         a, b, _ = edges[idx]
         plan[idx] = dict(points=[], stations=e["st"], routed=bool(e["st"]) or (e["es"] in "tb" and e["et"] in "tb"), sideways=e["sideways"],
-                         sides=(e["es"], e["et"]))
+                         sides=(e["es"], e["et"]), bundle=fans.get(idx))
         ends[(a, e["es"])].append((idx, "exit", e["nxt"]))
         ends[(b, e["et"])].append((idx, "entry", e["prv"]))
-    where = assign(B, ends, kinds, tb)
+    where = assign(B, ends, kinds, tb, {(idx, "exit"): key for idx, key in fans.items()})
     for (n, side), lst in ends.items():
         x, y, w, h = B[n]
         for idx, kind, _ in lst:
@@ -327,6 +398,8 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
             plan[idx][kind + "_at"] = {"t": (pos, y), "b": (pos, y + h), "l": (x, pos), "r": (x + w, pos)}[side]     # where the edge really attaches
     _tracks(plan, B, edges, labelled, solid, skip)
     reroute_fix(plan, B, edges, solid, skip)
+    if tidy:
+        untangle(plan, B, edges, solid, skip, kinds, tb)
     if not tb:
         for p in plan.values():
             for k in ("exit", "entry"):

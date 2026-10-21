@@ -10,6 +10,7 @@ from ports import widen
 from routing import route_edges
 
 M = 40
+STRAIGHTEN_MAX = 120      # nodes up to which the straightened variant of each layout is tried as well
 KIND_OF = {"diamond": "diamond", "circle": "ellipse", "start": "ellipse", "end": "ellipse", "stadium": "stadium", "para": "para",
            "cylinder": "cylinder", "note": "note"}     # shapes whose outline decides where an edge can attach (ports.half)
 SHAPE_OF = {"rect": "rounded", "round": "rounded", "stadium": "stadium", "circle": "ellipse", "diamond": "diamond",
@@ -101,7 +102,7 @@ def build(model):
     return d, size
 
 
-def _lay_out(model, direction, gname, edge_text):
+def _lay_out(model, direction, gname, edge_text, flatten=False, tidy=False):
     """One complete layout in the given direction -> (result, plan, label spots, quality metrics)."""
     resolve = lambda i: i if i in model.nodes else gname.get(i, i)
     sizes = {i: node_size(n, direction) for i, n in model.nodes.items()}
@@ -112,11 +113,12 @@ def _lay_out(model, direction, gname, edge_text):
     parent.update({i: (gname[n.parent] if n.parent else None) for i, n in model.nodes.items()})
     groups = {gname[g]: text_width(grp.label, 8.4) + 40 for g, grp in model.groups.items()}
     label_w = max((text_width(t, 6.6) for t in edge_text if t), default=0)
-    res = layout(sizes, parent, groups, edges, direction, label_w=label_w, side_leaves=model.kind in ("flow", "state"), kinds=kinds)
-    plan = route_edges(res.abs_box, edges, res.chains_abs, direction, parents=parent, labelled=[bool(t) for t in edge_text], kinds=kinds)
+    res = layout(sizes, parent, groups, edges, direction, label_w=label_w, side_leaves=model.kind in ("flow", "state"), kinds=kinds, flatten=flatten)
+    plan = route_edges(res.abs_box, edges, res.chains_abs, direction, parents=parent, labelled=[bool(t) for t in edge_text], kinds=kinds,
+                       styles=[edge_style(e) for e in model.edges], tidy=tidy)
     lines = labels.lines_of(plan, res.abs_box, edges)
     spots, touching = labels.place(lines, edges, edge_text, res.abs_box, model.nodes)
-    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent)
+    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()})
     return res, plan, spots, quality, parent, edges
 
 
@@ -124,9 +126,14 @@ def _graph(model):
     gname = {g: (g if g not in model.nodes else g + "_grp") for g in model.groups}
     resolve = lambda i: i if i in model.nodes else gname.get(i, i)
     edge_text = ["\n".join(wrap_lines(e.label, 24)) if e.label else "" for e in model.edges]
-    tried = [d for d in ([model.direction] if model.direction else ["TB", "LR"])]
-    runs = [(_lay_out(model, d, gname, edge_text), d) for d in tried]
-    (res, plan, spots, quality, parent, edges), direction = min(runs, key=lambda r: r[0][3]["score"])
+    tried = [model.direction] if model.direction else ["TB", "LR"]
+    flats = (False, True) if len(model.nodes) <= STRAIGHTEN_MAX else (False,)         # a huge graph takes too long to lay out twice more
+    runs = [(_lay_out(model, d, gname, edge_text, flat), d, flat) for d in tried for flat in flats]     # the layout that measures best wins
+    best, direction, flat = min(runs, key=lambda r: r[0][3]["score"])
+    if best[3]["crossings"] or best[3]["shared"]:                                  # only the winner is worth the slower search for better routes
+        again = _lay_out(model, direction, gname, edge_text, flat, tidy=True)
+        best = min(best, again, key=lambda r: r[3]["score"])
+    res, plan, spots, quality, parent, edges = best
     model.layout_report = dict(quality, direction=direction, auto=len(tried) > 1)
     W, H = res.extent
     d = Diagram()

@@ -32,7 +32,8 @@ def _cross(s, t):
     return hx0 + 2 < vx < hx1 - 2 and vy0 + 2 < hy < vy1 - 2
 
 
-JOG = 10        # a middle segment shorter than this (less than one lane, 12 px) is a wobble in a line meant to be straight, not a turn
+JOG = 24        # a middle segment shorter than this (two lanes of 12 px) is a wobble in a line meant to be straight, not a turn
+DETOUR = 40     # a route that travels this far against its own direction (out and back) is a detour, not a path
 SHARE = 3       # two parallel runs closer than this look like one line
 
 
@@ -57,6 +58,17 @@ def bends_and_jogs(line):
     return max(len(pts) - 2, 0), sum(1 for n in lengths[1:-1] if n < JOG)
 
 
+def backtrack(line):
+    """How far a route travels against its own net direction, summed over both axes: 0 for a straight line, an L or a Z,
+    positive where it goes out past its target and comes back, around the side of a column of nodes."""
+    pts = _corners(line)
+    total = 0.0
+    for axis in (0, 1):
+        sign = 1 if pts[-1][axis] >= pts[0][axis] else -1
+        total += sum(max(0.0, -sign * (b[axis] - a[axis])) for a, b in zip(pts, pts[1:]))
+    return total
+
+
 def _runs_overlap(s, t):
     """Do two parallel axis-aligned segments of different edges lie on top of each other for more than a few px?"""
     (a1, b1), (a2, b2) = s
@@ -77,8 +89,8 @@ def label_cost(rect, own, lines, solid):
     return cost
 
 
-def evaluate(lines, boxes, edges, leaves, label_conflicts, size):
-    """lines {edge idx: polyline}. -> dict(node_hits, crossings, label_conflicts, bends, jogs, shared, score)."""
+def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None):
+    """lines {edge idx: polyline}; bundles {edge idx: fan key}: edges of one fan share their trunk on purpose. -> dict(node_hits, crossings, label_conflicts, bends, jogs, shared, detour, score)."""
     hits = 0
     for idx, line in lines.items():
         a, b, _ = edges[idx]
@@ -89,11 +101,15 @@ def evaluate(lines, boxes, edges, leaves, label_conflicts, size):
     crossings = sum(1 for i in range(len(segs)) for j in range(i + 1, len(segs)) if segs[i][0] != segs[j][0] and _cross(segs[i][1], segs[j][1]))
     w, h = size
     aspect = abs(math.log(max(w, 1) / max(h, 1) / 1.6))
-    bends = jogs = 0
+    bends = jogs = detour = 0
     for line in lines.values():
         b, j = bends_and_jogs(line)
         bends, jogs = bends + b, jogs + j
+        detour += backtrack(line) >= DETOUR
     merged = [(idx, s) for idx, line in lines.items() for s in _segments(_corners(line))]
-    shared = sum(1 for i in range(len(merged)) for j in range(i + 1, len(merged)) if merged[i][0] != merged[j][0] and _runs_overlap(merged[i][1], merged[j][1]))
-    score = 25 * hits + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared
-    return dict(node_hits=hits, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, score=score)
+    bundles = bundles or {}
+    same_fan = lambda a, b: bundles.get(a) is not None and bundles.get(a) == bundles.get(b)
+    shared = sum(1 for i in range(len(merged)) for j in range(i + 1, len(merged))
+                 if merged[i][0] != merged[j][0] and not same_fan(merged[i][0], merged[j][0]) and _runs_overlap(merged[i][1], merged[j][1]))
+    score = 25 * hits + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared + 2 * detour
+    return dict(node_hits=hits, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, detour=detour, score=score)

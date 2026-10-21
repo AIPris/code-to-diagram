@@ -9,7 +9,7 @@ This computes ranks, node order, coordinates, container sizes and the corridors 
 import math
 from collections import defaultdict
 
-from ports import half, pav
+from ports import NEAR, half, pav
 
 PAD, HEADER = 24, 30            # container inner margin / title bar
 GAP_O, GAP_R = 40, 56           # gap between nodes in a rank / between ranks
@@ -205,7 +205,7 @@ def _order(layers, links, flat, sweeps=14):
 
 
 # ---- coordinates --------------------------------------------------------------------------------------------------
-def _coords(layers, links, so, sr, tb, gap, flat, kinds):
+def _coords(layers, links, so, sr, tb, gap, flat, kinds, flatten=False):
     up, down = defaultdict(list), defaultdict(list)
     for u, v in links:
         down[u].append(v)
@@ -256,8 +256,62 @@ def _coords(layers, links, so, sr, tb, gap, flat, kinds):
     for u, v in spine.items():                                # sub-pixel leftovers of the weighted fit become exact
         if abs(c[u] - c[v]) < 1:
             c[v] = c[u]
+    if flatten:
+        _flatten(layers, up, down, c, so, sr, tb, gap, flat, kinds)
     _straighten(layers, up, down, c, so, sr, tb, gap, kinds)
     return c
+
+
+def _flatten(layers, up, down, c, so, sr, tb, gap, flat, kinds):
+    """Make straight lines possible. Two linked nodes can be joined by a straight line when their extents overlap, they
+    need not be centred on each other; the averaging above aims at centres and so leaves edges a few px short of an
+    overlap, which then need two bends. Each node moves to where the fewest px of overlap are missing towards the nodes
+    it links to (nearest to where it is when several places do equally well), pushing its neighbours in the rank aside
+    when it needs their room. A move is kept only if the missing px of all the links it touches go down."""
+    half_of = lambda n: 0 if isinstance(n, tuple) else half(kinds.get(n), so[n], sr[n], tb)
+    margin = lambda a, b: 0 if isinstance(a, tuple) or isinstance(b, tuple) else NEAR       # room for the ports of two nodes to line up
+    nbs = {n: up[n] + down[n] for L in layers for n in L}
+
+    def pushed(L, i, x):
+        """Positions of the nodes of rank L that change when L[i] moves to x: the neighbours that are in the way move along."""
+        new = {L[i]: x}
+        for step in (1, -1):
+            prev, px = L[i], x
+            for j in range(i + step, len(L) if step > 0 else -1, step):
+                m = L[j]
+                need = px + step * ((so[prev] + so[m]) / 2 + (gap(prev, m) if step > 0 else gap(m, prev)))
+                if (c[m] - need) * step >= -1e-9:
+                    break
+                new[m] = need
+                prev, px = m, need
+        return new
+
+    def missing(new):
+        links = {(m, n) for n in new for m in up[n]} | {(n, m) for n in new for m in down[n]}
+        at = lambda k: new.get(k, c[k])
+        return sum(max(0.0, abs(at(a) - at(b)) - half_of(a) - half_of(b) + margin(a, b)) for a, b in links)
+
+    for sweep in range(8):
+        moved = False
+        for r in (range(len(layers)) if sweep % 2 == 0 else reversed(range(len(layers)))):
+            L = layers[r]
+            for i, n in enumerate(L):
+                if n in flat or isinstance(n, tuple) or not nbs[n]:
+                    continue
+                here = missing({n: c[n]})
+                if here == 0:
+                    continue
+                best = None
+                for x in {c[m] + s * (half_of(n) + half_of(m) - margin(n, m)) for m in nbs[n] for s in (-1, 1)}:
+                    new = pushed(L, i, x)
+                    key = (round(missing(new), 2), len(new), abs(x - c[n]))
+                    if best is None or key < best[0]:
+                        best = key, new
+                if best and best[0][0] < round(here, 2) - 0.5:
+                    c.update(best[1])
+                    moved = True
+        if not moved:
+            break
 
 
 def _straighten(layers, up, down, c, so, sr, tb, gap, kinds):
@@ -295,7 +349,7 @@ def _straighten(layers, up, down, c, so, sr, tb, gap, kinds):
 
 
 # ---- one level ----------------------------------------------------------------------------------------------------
-def _layered(ids, size, edges, direction, gap_r, side_leaves, kinds=()):
+def _layered(ids, size, edges, direction, gap_r, side_leaves, kinds=(), flatten=False):
     """Lay out one level. ids in declaration order, size[id] = (w, h), edges [(a, b, rev, idx)].
     Returns pos{id: (x, y)} top-left, (W, H), chains{idx: [(x, y), ...]} in real path order a -> b."""
     tb = direction in ("TB", "TD", "BT")
@@ -331,7 +385,7 @@ def _layered(ids, size, edges, direction, gap_r, side_leaves, kinds=()):
             L.sort(key=lambda n: hint.get(n, 0))
         _order(layers, links, flat)
 
-    c = _coords(layers, links, {n: so_of(n) for L in layers for n in L}, {n: sr_of(n) for L in layers for n in L}, tb, gap, flat, kinds)
+    c = _coords(layers, links, {n: so_of(n) for L in layers for n in L}, {n: sr_of(n) for L in layers for n in L}, tb, gap, flat, kinds, flatten)
     top, band, y = [], [], 0.0
     for L in layers:
         band.append(max((sr_of(n) for n in L), default=0))
@@ -380,7 +434,7 @@ def _grid(ids, size, max_o):
 
 
 # ---- nested levels ------------------------------------------------------------------------------------------------
-def layout(sizes, parent, groups, edges, direction="TB", label_w=0, side_leaves=False, kinds=()):
+def layout(sizes, parent, groups, edges, direction="TB", label_w=0, side_leaves=False, kinds=(), flatten=False):
     """sizes {id: (w, h)} for leaf nodes; parent {id: group id | None} for nodes and groups, in declaration order;
     groups = {container id: minimum width (title)}; edges [(src, tgt, rev)] (rev: rank tgt before src, e.g. UML inheritance).
     Returns a Layout with absolute boxes for every node and container."""
@@ -424,7 +478,7 @@ def layout(sizes, parent, groups, edges, direction="TB", label_w=0, side_leaves=
             main = [k for k in kids if k in linked]
         pos, W, H, chains = {}, 0, 0, {}
         if main:
-            pos, (W, H), chains = _layered(main, res.size, lifted, direction, gap_r, side_leaves, kinds)
+            pos, (W, H), chains = _layered(main, res.size, lifted, direction, gap_r, side_leaves, kinds, flatten)
         if loose:                                            # nodes without edges: a compact grid below the flow
             gpos, (gw, gh) = _grid(loose, res.size, MAX_O["TB" if direction in ("TB", "TD", "BT") else "LR"])
             dy = H + (GAP_R if main else 0)
