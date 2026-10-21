@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import c2d  # noqa: E402
 import emit  # noqa: E402
 import mermaid  # noqa: E402
 from validate_drawio import validate  # noqa: E402
@@ -85,6 +86,14 @@ def main():
                 problems.append("edges are not glued")
             print(f"{'FAIL' if problems else 'ok  '} {name}: {nv} shapes, {ne} edges" + (f"  {problems[:3]}" if problems else ""))
             failed += bool(problems)
+    with tempfile.TemporaryDirectory() as tmp:                      # a spec saved by Windows PowerShell starts with a BOM
+        for label, prefix in (("with BOM", b"\xef\xbb\xbf"), ("without BOM", b"")):
+            path = os.path.join(tmp, "spec.mmd")
+            with open(path, "wb") as f:
+                f.write(prefix + SAMPLES["state"].encode("utf-8"))
+            errors = mermaid.parse(c2d.read_spec(path)).errors
+            print(f"{'FAIL' if errors else 'ok  '} spec file {label}" + (f"  {errors[:2]}" if errors else ""))
+            failed += bool(errors)
     doc = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "SKILL.md"), encoding="utf-8").read()
     for block in re.findall(r"```\n(.*?)```", doc, re.S):          # the examples in SKILL.md must keep parsing
         if block.split()[0] in ("flowchart", "graph", "stateDiagram-v2", "sequenceDiagram", "classDiagram", "erDiagram"):

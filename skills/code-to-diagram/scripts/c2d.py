@@ -72,6 +72,12 @@ def resolve_src(path, anchor):
     return path
 
 
+def read_spec(path):
+    """The spec text. Windows PowerShell's `>` and Out-File start a file with a UTF-8 BOM, which must not reach line 1."""
+    with open(path, encoding="utf-8-sig") as f:
+        return f.read()
+
+
 def cap(lines, n=SHOW):
     return lines[:n] + ([f"  ... +{len(lines) - n} more"] if len(lines) > n else [])
 
@@ -85,7 +91,7 @@ def cmd_build(argv):
         sys.exit("usage: c2d.py build <path/to/name.mmd> [--no-png] [--archive] [--scale N]")
     mmd = args[0]
     base = mmd[:-4]
-    model = mermaid.parse(open(mmd, encoding="utf-8").read())
+    model = mermaid.parse(read_spec(mmd))
     if model.errors:
         print(f"SPEC ERRORS in {mmd} (nothing built):")
         for no, text, why in model.errors[:20]:
