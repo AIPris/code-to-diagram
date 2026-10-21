@@ -1,22 +1,21 @@
 """Layered (Sugiyama-style) layout for nested graphs, stdlib only.
 
-    from layout import layout, route_edges
-    res = layout(sizes, parent, groups, edges, "TB")   # positions + container sizes
-    ports = route_edges(res.abs_box, edges, res.chains_abs, "TB")
+    from layout import layout
+    res = layout(sizes, parent, groups, edges, "TB")   # positions + container sizes + corridors of long edges
 
 Why it exists: asking a model to place 30 boxes by hand costs thousands of output tokens and still overlaps.
-This computes ranks, node order, coordinates, container sizes, the corridors long edges take between ranks and
-distinct ports for edges that share a node side. draw.io then only has to route short orthogonal segments.
+This computes ranks, node order, coordinates, container sizes and the corridors long edges take between ranks. Routing the edges is routing.py.
 """
 import math
 from collections import defaultdict
 
-from metrics import _through
-from reroute import fix as reroute_fix
+from ports import half, pav
 
 PAD, HEADER = 24, 30            # container inner margin / title bar
 GAP_O, GAP_R = 40, 56           # gap between nodes in a rank / between ranks
-DUMMY_W = 18                    # width reserved for an edge corridor passing through a rank
+DUMMY_W = 12                    # width reserved for an edge corridor passing through a rank: parallel edges run PITCH apart
+CORRIDOR_GAP = 18               # clear space between a corridor and a node beside it
+CORRIDOR_SLACK = 8              # of which a corridor straightened later may give up
 MAX_O = {"TB": 1800, "LR": 1100}  # wrap a rank into rows past this extent along the order axis
 
 
@@ -206,26 +205,7 @@ def _order(layers, links, flat, sweeps=14):
 
 
 # ---- coordinates --------------------------------------------------------------------------------------------------
-def _pav(desired, weights, seps):
-    """Positions closest (weighted least squares) to `desired` with p[i+1] - p[i] >= seps[i]."""
-    off = [0.0]
-    for s in seps:
-        off.append(off[-1] + s)
-    blocks = []
-    for i, d in enumerate(desired):
-        blocks.append([(d - off[i]) * weights[i], weights[i], 1])
-        while len(blocks) > 1 and blocks[-2][0] / blocks[-2][1] > blocks[-1][0] / blocks[-1][1]:
-            a = blocks.pop()
-            blocks[-1][0] += a[0]
-            blocks[-1][1] += a[1]
-            blocks[-1][2] += a[2]
-    q = []
-    for s, w, c in blocks:
-        q += [s / w] * c
-    return [q[i] + off[i] for i in range(len(desired))]
-
-
-def _coords(layers, links, so, gap, flat):
+def _coords(layers, links, so, sr, tb, gap, flat, kinds):
     up, down = defaultdict(list), defaultdict(list)
     for u, v in links:
         down[u].append(v)
@@ -240,6 +220,12 @@ def _coords(layers, links, so, gap, flat):
             c[n] = x + so[n] / 2
             x += so[n] + gap(n, None)
 
+    pieces = defaultdict(list)                                # the corridor points of each long edge
+    for L in layers:
+        for n in L:
+            if isinstance(n, tuple):
+                pieces[n[1]].append(n)
+
     def settle(L, nbs):
         if not L:
             return
@@ -249,11 +235,13 @@ def _coords(layers, links, so, gap, flat):
             tot = sum(w for _, w in nb)
             if n in flat:
                 want.append(c[flat[n]] + (so[flat[n]] + so[n]) / 2 + GAP_O)
+            elif isinstance(n, tuple):                                  # a long edge is one rigid line: every point wants the mean
+                want.append(sum(c[m] for m in pieces[n[1]]) / len(pieces[n[1]]))
             else:
                 want.append(sum(c[m] * w for m, w in nb) / tot if nb else c[n])
-        weight = [(3 if isinstance(n, tuple) else 1) * (1000 if n in kept or n in flat else 1) for n in L]   # spines, corridors, side leaves
+        weight = [(3 if isinstance(n, tuple) else 1) * (1000 if n in kept or n in flat or isinstance(n, tuple) else 1) for n in L]   # spines, corridors, side leaves
         seps = [(so[a] + so[b]) / 2 + gap(a, b) for a, b in zip(L, L[1:])]
-        for n, p in zip(L, _pav(want, weight, seps)):
+        for n, p in zip(L, pav(want, weight, seps)):
             c[n] = p
 
     ups = lambda n: [(m, link_w(m, n)) for m in up[n]]
@@ -268,11 +256,46 @@ def _coords(layers, links, so, gap, flat):
     for u, v in spine.items():                                # sub-pixel leftovers of the weighted fit become exact
         if abs(c[u] - c[v]) < 1:
             c[v] = c[u]
+    _straighten(layers, up, down, c, so, sr, tb, gap, kinds)
     return c
 
 
+def _straighten(layers, up, down, c, so, sr, tb, gap, kinds):
+    """Put every long edge on one line: all the corridor points of an edge get the same coordinate when the room between
+    their neighbours allows it. Of the possible lines the one inside the extent of the edge's source and target is
+    preferred: there the edge leaves or enters its node without a bend."""
+    chains = defaultdict(list)
+    for r, L in enumerate(layers):
+        for n in L:
+            if isinstance(n, tuple):
+                chains[n[1]].append((r, n))
+    def reach(n):                                             # where along a node an edge can attach
+        h = half(kinds.get(n), so[n], sr[n], tb)
+        return c[n] - h, c[n] + h
+
+    tight = lambda a, b: gap(a, b) - (CORRIDOR_SLACK if isinstance(a, tuple) != isinstance(b, tuple) else 0)   # a straight corridor may pass a node a little closer
+    for _ in range(3):
+        for idx, chain in sorted(chains.items(), key=lambda kv: -len(kv[1])):
+            lo, hi = -math.inf, math.inf
+            for r, d in chain:
+                L = layers[r]
+                i = L.index(d)
+                if i > 0:
+                    lo = max(lo, c[L[i - 1]] + (so[L[i - 1]] + so[d]) / 2 + tight(L[i - 1], d))
+                if i < len(L) - 1:
+                    hi = min(hi, c[L[i + 1]] - (so[L[i + 1]] + so[d]) / 2 - tight(d, L[i + 1]))
+            if lo > hi:
+                continue
+            near = sorted(c[d] for _, d in chain)[len(chain) // 2]
+            ends = [reach(m) for m in (up[chain[0][1]][0], down[chain[-1][1]][0])]
+            away = lambda t: sum(max(a - t, t - b, 0) for a, b in ends)           # how far t lies outside the two ends
+            best = min((min(max(t, lo), hi) for t in [near] + [v for a, b in ends for v in (a, b)]), key=lambda t: (round(away(t)), abs(t - near)))
+            for _, d in chain:
+                c[d] = best
+
+
 # ---- one level ----------------------------------------------------------------------------------------------------
-def _layered(ids, size, edges, direction, gap_r, side_leaves):
+def _layered(ids, size, edges, direction, gap_r, side_leaves, kinds=()):
     """Lay out one level. ids in declaration order, size[id] = (w, h), edges [(a, b, rev, idx)].
     Returns pos{id: (x, y)} top-left, (W, H), chains{idx: [(x, y), ...]} in real path order a -> b."""
     tb = direction in ("TB", "TD", "BT")
@@ -281,7 +304,7 @@ def _layered(ids, size, edges, direction, gap_r, side_leaves):
     sr = {n: size[n][1] if tb else size[n][0] for n in ids}
     so_of = lambda n: DUMMY_W if isinstance(n, tuple) else so[n]
     sr_of = lambda n: 0 if isinstance(n, tuple) else sr[n]
-    gap = lambda a, b: 22 if isinstance(a, tuple) or isinstance(b, tuple) else GAP_O
+    gap = lambda a, b: (0 if isinstance(a, tuple) and isinstance(b, tuple) else CORRIDOR_GAP) if isinstance(a, tuple) or isinstance(b, tuple) else GAP_O
 
     rank_edges = _acyclic(ids, edges)
     rank = _longest_path(ids, rank_edges)
@@ -308,7 +331,7 @@ def _layered(ids, size, edges, direction, gap_r, side_leaves):
             L.sort(key=lambda n: hint.get(n, 0))
         _order(layers, links, flat)
 
-    c = _coords(layers, links, {n: so_of(n) for L in layers for n in L}, gap, flat)
+    c = _coords(layers, links, {n: so_of(n) for L in layers for n in L}, {n: sr_of(n) for L in layers for n in L}, tb, gap, flat, kinds)
     top, band, y = [], [], 0.0
     for L in layers:
         band.append(max((sr_of(n) for n in L), default=0))
@@ -357,7 +380,7 @@ def _grid(ids, size, max_o):
 
 
 # ---- nested levels ------------------------------------------------------------------------------------------------
-def layout(sizes, parent, groups, edges, direction="TB", label_w=0, side_leaves=False):
+def layout(sizes, parent, groups, edges, direction="TB", label_w=0, side_leaves=False, kinds=()):
     """sizes {id: (w, h)} for leaf nodes; parent {id: group id | None} for nodes and groups, in declaration order;
     groups = {container id: minimum width (title)}; edges [(src, tgt, rev)] (rev: rank tgt before src, e.g. UML inheritance).
     Returns a Layout with absolute boxes for every node and container."""
@@ -401,7 +424,7 @@ def layout(sizes, parent, groups, edges, direction="TB", label_w=0, side_leaves=
             main = [k for k in kids if k in linked]
         pos, W, H, chains = {}, 0, 0, {}
         if main:
-            pos, (W, H), chains = _layered(main, res.size, lifted, direction, gap_r, side_leaves)
+            pos, (W, H), chains = _layered(main, res.size, lifted, direction, gap_r, side_leaves, kinds)
         if loose:                                            # nodes without edges: a compact grid below the flow
             gpos, (gw, gh) = _grid(loose, res.size, MAX_O["TB" if direction in ("TB", "TD", "BT") else "LR"])
             dy = H + (GAP_R if main else 0)
@@ -437,207 +460,3 @@ def layout(sizes, parent, groups, edges, direction="TB", label_w=0, side_leaves=
         ox, oy = absolute(gid) if gid is not None else (0, 0)
         res.chains_abs[idx] = [(ox + x, oy + y) for x, y in pts]
     return res
-
-
-# ---- ports ---------------------------------------------------------------------------------------------------------
-LAND = 20      # a target this far past the source's edge is reached from the source's side (an L-shaped route)
-
-
-def _hits(box, p, q):
-    """Does the axis-parallel segment p-q run through box (x, y, w, h)?"""
-    x, y, w, h = box
-    return min(p[0], q[0]) < x + w and max(p[0], q[0]) > x and min(p[1], q[1]) < y + h and max(p[1], q[1]) > y
-
-
-def _sides(s, t, solid):
-    """Exit side of s and entry side of t (TB space; t may be a zero-size waypoint box) for an edge s -> t.
-    solid: boxes an L-shaped route must not cross."""
-    sx, sy, sw, sh = s
-    tx, ty, tw, th = t
-    if ty >= sy + sh - 1:                                    # target below
-        side = "r" if tx >= sx + sw + LAND else "l" if tx + tw <= sx - LAND else None
-        if side:
-            y0, x0, x1 = sy + sh / 2, (sx + sw if side == "r" else sx), tx + tw / 2
-            legs = [((x0, y0 - 1), (x1, y0 + 1)), ((x1 - 1, y0), (x1 + 1, ty))]
-            if not any(_hits(b, p, q) for b in solid for p, q in legs):
-                return side, "t"
-        return "b", "t"
-    if ty + th <= sy + 1:                                    # target above: a back edge
-        return "t", "b"
-    return ("r", "l") if tx + tw / 2 >= sx + sw / 2 else ("l", "r")
-
-
-def _spread(items):
-    """items [(offset, key)]: offset of the other end from this node's centre along the side. -> {key: fraction}.
-    Ends pointing left/up use the first half of the side, right/down the second; an aligned end sits in the middle."""
-    if len(items) == 1:
-        return {items[0][1]: 0.5}
-    items = sorted(items, key=lambda i: i[0])
-    neg, mid, pos = ([i for i in items if i[0] < -1], [i for i in items if abs(i[0]) <= 1], [i for i in items if i[0] > 1])
-    out = {}
-    for j, (_, k) in enumerate(neg):
-        out[k] = 0.5 * (j + 1) / (len(neg) + 1)
-    for j, (_, k) in enumerate(mid):
-        out[k] = 0.5 + 0.1 * (j - (len(mid) - 1) / 2)
-    for j, (_, k) in enumerate(pos):
-        out[k] = 0.5 + 0.5 * (j + 1) / (len(pos) + 1)
-    return out
-
-
-def _stations(pts):
-    """Corridor waypoints (two per rank crossed: entering and leaving its band) -> [(x, y_enter, y_leave)] in path order."""
-    out = []
-    for x, y in pts:
-        if out and abs(out[-1][0] - x) < 0.5:
-            out[-1][2] = y
-        else:
-            out.append([x, y, y])
-    return out
-
-
-CLEAR = 5      # a pinned route keeps this far from every node it does not belong to
-
-
-def _clear(points, boxes):
-    """True when no segment of the orthogonal polyline `points` passes through any of `boxes`."""
-    return not any(_through((points[i], points[i + 1]), b, shrink=-CLEAR) for i in range(len(points) - 1) for b in boxes)
-
-
-def _loop(s, others):
-    """A self-loop on the side of the node that has room (right, left, below, above)."""
-    x, y, w, h = s
-    reach = 34
-    options = [((1, 0.3), (1, 0.7), [(x + w + reach, y + 0.3 * h), (x + w + reach, y + 0.7 * h)]),
-               ((0, 0.3), (0, 0.7), [(x - reach, y + 0.3 * h), (x - reach, y + 0.7 * h)]),
-               ((0.3, 1), (0.7, 1), [(x + 0.3 * w, y + h + reach), (x + 0.7 * w, y + h + reach)]),
-               ((0.3, 0), (0.7, 0), [(x + 0.3 * w, y - reach), (x + 0.7 * w, y - reach)])]
-    for ex, en, pts in options:
-        start, end = (x + ex[0] * w, y + ex[1] * h), (x + en[0] * w, y + en[1] * h)
-        if _clear([start] + pts + [end], others):
-            break
-    return dict(exit=ex, entry=en, points=pts)
-
-
-def _tracks(plan, B, edges, labelled, solid, skip):
-    """Vertical routes (down-across-down, also through corridors) change column in the gap between two ranks. Left to
-    draw.io they all do it at the middle of the gap, on top of each other, or hugging a node's top edge. Each change of
-    column is a horizontal run; give every run its own height inside its gap and pin it with waypoints. A pinned route
-    must not cut through a node: if the first choice does, other heights are tried, and if none is clear the edge is
-    left to draw.io's own routing."""
-    runs, ranges = [], {}
-    for idx, (a, b, _) in enumerate(edges):
-        p = plan[idx]
-        if a == b or "exit" not in p or not p.get("vertical"):
-            continue
-        s, t = B[a], B[b]
-        x0, y0 = s[0] + p["exit"][0] * s[2], s[1] + p["exit"][1] * s[3]
-        x1, y1 = t[0] + p["entry"][0] * t[2], t[1] + p["entry"][1] * t[3]
-        st = p["stations"]
-        xs = [x0] + [q[0] for q in st] + [x1]
-        leave = [y0] + [q[2] for q in st]
-        enter = [q[1] for q in st] + [y1]
-        p["_legs"] = []
-        for j in range(len(xs) - 1):
-            if abs(xs[j] - xs[j + 1]) < 2:
-                continue
-            lo, hi = sorted((leave[j], enter[j]))
-            ranges[(idx, j)] = (lo + 6, hi - 6)
-            runs.append([min(xs[j], xs[j + 1]), max(xs[j], xs[j + 1]), lo + 6, hi - 6, idx, j, 18 if labelled[idx] else 9])
-            p["_legs"].append((j, xs[j], xs[j + 1]))
-        p["_ends"] = ((x0, y0), (x1, y1))
-    placed, ys = [], {}
-    for lo, hi, top, bot, idx, j, step in sorted(runs, key=lambda r: (r[0], r[1])):
-        mid = (top + bot) / 2
-        pick = mid
-        for k in range(14):
-            y = mid + (-1) ** k * ((k + 1) // 2) * step
-            if top <= y <= bot and not any(abs(y - py) < step - 1 and lo < phi and hi > plo for plo, phi, py in placed):
-                pick = y
-                break
-        placed.append((lo, hi, pick))
-        ys[(idx, j)] = pick
-    for idx, p in plan.items():
-        legs, ends = p.pop("_legs", []), p.pop("_ends", None)
-        p.pop("stations", None)
-        p.pop("vertical", None)
-        if not legs:
-            continue
-        a, b, _ = edges[idx]
-        others = [box for k, box in solid.items() if k not in skip(a, b)]
-        height = {j: ys[(idx, j)] for j, _, _ in legs}
-
-        def route():
-            pts = []
-            for j, xa, xb in legs:
-                pts += [(xa, height[j]), (xb, height[j])]
-            return pts
-
-        if not _clear([ends[0]] + route() + [ends[1]], others):
-            for j, xa, xb in legs:                           # look for a free height, nearest to the first choice first
-                lo, hi = ranges[(idx, j)]
-                tries = sorted((lo + k * 8 for k in range(int(max(hi - lo, 0) // 8) + 1)), key=lambda y: abs(y - height[j]))
-                for y in tries:
-                    height[j] = y
-                    if _clear([ends[0]] + route() + [ends[1]], others):
-                        break
-            if not _clear([ends[0]] + route() + [ends[1]], others):
-                continue                                     # nothing is clear: draw.io's own routing, reported by metrics
-        p["points"] += route()
-
-
-def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=None):
-    """For every edge (src, tgt, rev): {exit, entry: (fx, fy) anchor fractions, points: absolute waypoints}.
-    Ends that share a node side are spread along it by where the other end lies, so they do not stack.
-    parents {id: container id}: containers other than an edge's own ancestors count as obstacles, like nodes.
-    labelled: per edge, does it carry a label."""
-    tb = direction in ("TB", "TD", "BT")
-    flip = (lambda b: b) if tb else (lambda b: (b[1], b[0], b[3], b[2]))
-    pt = (lambda p: p) if tb else (lambda p: (p[1], p[0]))
-    B = {i: flip(b) for i, b in boxes.items()}
-    parents = parents or {}
-
-    def skip(a, b):                                        # the two ends and the containers around them
-        out = {a, b}
-        for i in (a, b):
-            while parents.get(i):
-                i = parents[i]
-                out.add(i)
-        return out
-
-    solid = B
-    labelled = labelled or [False] * len(edges)
-    plan, ends = {}, defaultdict(list)
-    for idx, (a, b, _) in enumerate(edges):
-        s, t = B[a], B[b]
-        if a == b:
-            plan[idx] = _loop(s, [v for k, v in solid.items() if k not in skip(a, a)])
-            continue
-        pts = [pt(p) for p in chains.get(idx, [])]
-        st = _stations(pts)
-        if st:                                               # through corridors: leave and enter vertically
-            down = st[0][1] > s[1] + s[3] / 2
-            es, et = ("b", "t") if down else ("t", "b")
-            nxt, prv = (st[0][0], st[0][1], 0, 0), (st[-1][0], st[-1][2], 0, 0)
-        else:
-            obstacles = [v for k, v in solid.items() if k not in skip(a, b)]
-            es, et = _sides(s, t, obstacles)
-            nxt, prv = t, s
-        plan[idx] = dict(points=[], stations=st, vertical=es in "tb" and et in "tb")
-        ends[(a, es)].append((idx, "exit", nxt))
-        ends[(b, et)].append((idx, "entry", prv))
-    for (n, side), lst in ends.items():
-        x, y, w, h = B[n]
-        along = 0 if side in ("t", "b") else 1
-        centre = (x + w / 2, y + h / 2)[along]
-        items = [((o[along] + o[2 + along] / 2) - centre, (idx, kind)) for idx, kind, o in lst]
-        for (idx, kind), f in _spread(items).items():
-            plan[idx][kind] = {"t": (f, 0), "b": (f, 1), "l": (0, f), "r": (1, f)}[side]
-    _tracks(plan, B, edges, labelled, solid, skip)
-    reroute_fix(plan, B, edges, solid, skip)
-    if not tb:
-        for p in plan.values():
-            for k in ("exit", "entry"):
-                if k in p:
-                    p[k] = (p[k][1], p[k][0])
-            p["points"] = [(q[1], q[0]) for q in p["points"]]
-    return plan

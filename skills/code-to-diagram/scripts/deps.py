@@ -96,6 +96,17 @@ def scan(files):
     return edges
 
 
+def find_entry(name, files):
+    """The scanned file --entry names: the exact path, else the one file whose path ends with it ("c2d.py", "scripts/c2d.py")."""
+    want = os.path.normpath(name)
+    if want in files:
+        return want
+    hits = [f for f in files if f == want or f.endswith(os.sep + want)]
+    if len(hits) != 1:
+        sys.exit(f"--entry {name}: " + (f"matches {len(hits)} scanned files ({', '.join(hits[:4])}); give more of the path" if hits else "matches no scanned file"))
+    return hits[0]
+
+
 def reach(edges, entry, hops):
     """Entry plus everything within `hops` imports of it, with the imports among those files."""
     seen, frontier = {entry}, [entry]
@@ -188,9 +199,9 @@ def main(argv):
     files = collect(a.paths, a.exclude)
     if not files:
         sys.exit("no .js/.ts/.py files found")
-    entry = os.path.normpath(a.entry) if a.entry else None
     sys.stdout.reconfigure(encoding="utf-8")
     full = scan(files)
+    entry = find_entry(a.entry, full) if a.entry else None
     edges = reach(full, entry, a.reach) if a.reach and entry else full
     sys.stdout.write(mermaid(edges, entry, not a.no_groups, a.drop_entry_edges, a.dir, a.paths, full))
 

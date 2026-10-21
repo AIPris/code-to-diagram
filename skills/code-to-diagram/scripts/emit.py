@@ -5,9 +5,13 @@ import sequence
 from drawio_lib import CHAR_W, LINE_H, PALETTE, Diagram, class_height, text_width, wrap_lines
 import labels
 import metrics
-from layout import layout, route_edges
+from layout import layout
+from ports import widen
+from routing import route_edges
 
 M = 40
+KIND_OF = {"diamond": "diamond", "circle": "ellipse", "start": "ellipse", "end": "ellipse", "stadium": "stadium", "para": "para",
+           "cylinder": "cylinder", "note": "note"}     # shapes whose outline decides where an edge can attach (ports.half)
 SHAPE_OF = {"rect": "rounded", "round": "rounded", "stadium": "stadium", "circle": "ellipse", "diamond": "diamond",
             "cylinder": "cylinder", "para": "para", "note": "note", "start": "start", "end": "end", "fork": "fork"}
 
@@ -101,13 +105,15 @@ def _lay_out(model, direction, gname, edge_text):
     """One complete layout in the given direction -> (result, plan, label spots, quality metrics)."""
     resolve = lambda i: i if i in model.nodes else gname.get(i, i)
     sizes = {i: node_size(n, direction) for i, n in model.nodes.items()}
+    edges = [(resolve(e.src), resolve(e.tgt), e.kind in ("inherit", "realize")) for e in model.edges]
+    kinds = {i: KIND_OF[n.shape] for i, n in model.nodes.items() if n.shape in KIND_OF}
+    widen(sizes, edges, direction in ("TB", "TD", "BT"), kinds)
     parent = {gname[g]: (gname[grp.parent] if grp.parent else None) for g, grp in model.groups.items()}
     parent.update({i: (gname[n.parent] if n.parent else None) for i, n in model.nodes.items()})
     groups = {gname[g]: text_width(grp.label, 8.4) + 40 for g, grp in model.groups.items()}
-    edges = [(resolve(e.src), resolve(e.tgt), e.kind in ("inherit", "realize")) for e in model.edges]
     label_w = max((text_width(t, 6.6) for t in edge_text if t), default=0)
-    res = layout(sizes, parent, groups, edges, direction, label_w=label_w, side_leaves=model.kind in ("flow", "state"))
-    plan = route_edges(res.abs_box, edges, res.chains_abs, direction, parents=parent, labelled=[bool(t) for t in edge_text])
+    res = layout(sizes, parent, groups, edges, direction, label_w=label_w, side_leaves=model.kind in ("flow", "state"), kinds=kinds)
+    plan = route_edges(res.abs_box, edges, res.chains_abs, direction, parents=parent, labelled=[bool(t) for t in edge_text], kinds=kinds)
     lines = labels.lines_of(plan, res.abs_box, edges)
     spots, touching = labels.place(lines, edges, edge_text, res.abs_box, model.nodes)
     quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent)

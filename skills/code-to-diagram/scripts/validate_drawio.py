@@ -19,6 +19,8 @@ Checks (deterministic, no rendering needed):
   W3  sibling vertices closer than 20px (recommended gap is 40px)
   W5  vertex lying fully inside a sibling that is not its container (use swimlane / container=1)
   W6  container whose child rows run past its bottom edge (clipped class/table rows)
+  W7  two consecutive waypoints of an edge differ in both x and y: draw.io adds an elbow of its own between them,
+      a kink in a line meant to be straight
   W4  html=1 label whose (XML-decoded) text contains '<' that is not a
       known HTML tag: draw.io's HTML renderer treats it as a tag and the
       text after it disappears. Write List&amp;lt;Order&amp;gt; in the
@@ -239,6 +241,14 @@ def validate(path):
                         f"E7: edge '{c['id']}' segment {pts[i]}->{pts[i + 1]} "
                         f"passes through vertex '{v['id']}' ({v['value'][:30]!r})"
                     )
+
+    # W7: consecutive waypoints that are not axis-aligned
+    for c in cells.values():
+        pts = c["points"] if c["edge"] else []
+        for a, b in zip(pts, pts[1:]):
+            if abs(a[0] - b[0]) > 0.5 and abs(a[1] - b[1]) > 0.5:
+                warnings.append(f"W7: edge '{c['id']}' waypoints {a}->{b} are not axis-aligned (draw.io adds an elbow between them)")
+                break
 
     # E8/W3: sibling vertex overlap / proximity (skip relative-positioned, e.g. edge labels)
     verts = [c for c in cells.values()

@@ -2,7 +2,8 @@
 """Fuzz the layout engine: python fuzz.py [runs] [seed]
 
 Builds many random diagrams (nested groups, back edges, long edges, self loops, labels, all directions) and requires the
-validator to find no errors: no overlapping shapes, no waypointed edge through an unrelated shape, no dangling edge.
+validator to find no errors: no overlapping shapes, no waypointed edge through an unrelated shape, no dangling edge, no
+waypoints that are not axis-aligned.
 A failure prints the Mermaid source that reproduces it.
 """
 import os
@@ -60,8 +61,8 @@ def main():
     runs = int(args[0]) if args else 200
     seed = int(args[1]) if len(args) > 1 else 1
     if "--legacy" in sys.argv:                       # the router before it checked its tracks against the nodes
-        import layout
-        layout._clear = lambda points, boxes: True
+        import routing
+        routing._clear = lambda points, boxes: True
     bad = hits = 0
     with tempfile.TemporaryDirectory() as tmp:
         for k in range(runs):
@@ -76,6 +77,7 @@ def main():
                 errors, warnings, nv, ne = validate(diagram.save(os.path.join(tmp, "f.drawio")))
             except Exception as e:  # noqa: BLE001
                 errors, warnings = [f"crash: {e!r}"], []
+            errors = errors + [w for w in warnings if w.startswith("W7")]      # a route that draw.io has to patch with its own elbow
             if errors:
                 bad += 1
                 if bad <= 3:

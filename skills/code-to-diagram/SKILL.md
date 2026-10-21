@@ -13,15 +13,15 @@ You write a short Mermaid spec. One command lays it out, writes the `.drawio` (e
 
 1. **Scope.** Take the diagram type and the code from the request; ask only if either is truly unclear (unattended: pick the likeliest reading and state it at the end). Draw the smallest slice that answers the question: one flow, one module, the hubs. Past ~25 nodes a diagram stops being readable: group with subgraphs, drop leaves, or split in two.
 2. **Gather facts cheaply.** Grep/Read only what the diagram will claim (signatures, branches, schema, call order); do not read whole files for what one grep answers. **Imports and module dependencies are not read at all, they are scanned:**
-   `python "$SKILL_DIR/scripts/c2d.py" deps <dir-or-file>... [--entry src/main.js --reach 1] [--exclude text] > diagrams/<slug>/<slug>.mmd`
-   (JS/TS/Python; groups by directory, colours hubs and leaves, collapses an entry file that imports most of the rest). Edit that file instead of retyping it.
+   `python "$SKILL_DIR/scripts/c2d.py" deps <dir-or-file>... [--entry main.js --reach 1] [--exclude text] > diagrams/<slug>/<slug>.mmd`
+   (JS/TS/Python; groups by directory, colours hubs and leaves, collapses an entry file that imports most of the rest; `--entry` takes a file name or the end of its path; `--exclude test` leaves out tests and tooling). Edit that file instead of retyping it.
 3. **Write the spec** to `diagrams/<slug>/<slug>.mmd` (kebab-case slug, under the working directory). First lines: `%% src: <files or dirs the facts come from>`, then the diagram.
 4. **Build:** `python "$SKILL_DIR/scripts/c2d.py" build diagrams/<slug>/<slug>.mmd`
    - `SPEC ERRORS` lists unsupported or malformed lines (nothing is built): fix them, rebuild.
    - `structure` warnings: fix the real ones.
    - `names ... NOT FOUND in source`: a label does not exist in the `%% src:` files; misspelled or invented? Check and correct (a deliberate pseudo-name is fine).
    - `imports: N solid arrows ... have NO import behind them`: those arrows claim an import that the code does not contain; fix them or draw them dashed.
-   - `layout:` is measured, not guessed: edges running through nodes, edge crossings, labels lying on lines. `no overlaps` means nothing to fix; a `dense:` hint says what to cut.
+   - `layout:` is measured, not guessed: edges running through nodes, edge crossings, kinks (a sideways step of under 10 px in a line meant to be straight), two edges drawn on top of each other, labels lying on lines, and the bends of all edges together. `no overlaps` means nothing to fix; a `dense:` hint says what to cut. Many bends per edge or crossings mean too many links between distant nodes: collapse or drop the hub, or group.
 5. **Look once.** Read the PNG named after `png:` (only when it says verified complete; never a PNG from an earlier run). Judge what a script cannot: readable, the layout tells the story. Fix by editing the spec (shorter labels, regroup, change direction, cut nodes) and rebuild; at most two rebuilds, then report what is left. Layout fixes by hand in the XML are overwritten by the next build.
 6. **Report** briefly: the `.drawio`, `.png` and `.mmd` paths, what the diagram shows, what you left out, assumptions.
 
@@ -82,7 +82,7 @@ The scripts are tools, not reading material: you never need to open them (`c2d.p
 - At most 3 colours, each meaning something; name classes by meaning (`hub`, `error`) and add the `%% legend:`.
 - Pipelines and long chains read better `LR`; hierarchies `TB`. A chain longer than ~12 steps: split by phase into subgraphs or use `LR`.
 - Dense graph (many crossing edges in the PNG): drop edges to a node everything uses, or group into subgraphs and link the groups.
-
+- Lines come out straight when linked nodes sit on consecutive levels; an edge that skips levels runs in its own lane and needs a turn or two. A node that links to many far-apart nodes is what makes a diagram messy: collapse it (`deps --entry`), or give its targets one subgraph and link the subgraph.
 ## Updating
 
 - Folder has a `.mmd`: edit it and rebuild. The previous `.drawio`/`.png` are copied to `history/` automatically when they are from an earlier session or were changed since the last build (the user edited them in draw.io); pass `--archive` when the user wants the old version kept for comparison. If the folder has a `description.md`, keep it true.

@@ -124,7 +124,19 @@ def _anchor(kind, spec):
     if spec is None:
         return ""
     fx, fy = spec
-    return f"{kind}X={fx:.3f};{kind}Y={fy:.3f};{kind}Dx=0;{kind}Dy=0;"
+    return f"{kind}X={fx:.4f};{kind}Y={fy:.4f};{kind}Dx=0;{kind}Dy=0;"
+
+
+# draw.io fails the whole export when a cell id equals a member of a JavaScript Array or Object ("join", "map", "find",
+# "constructor"): natural names in a code diagram. Such ids are written with a prefix that a Mermaid id cannot contain.
+JS_MEMBERS = frozenset("""at concat copyWithin entries every fill filter find findIndex findLast findLastIndex flat flatMap forEach
+    includes indexOf join keys lastIndexOf length map pop push reduce reduceRight reverse shift slice some sort splice
+    toLocaleString toReversed toSorted toSpliced toString unshift valueOf values with constructor hasOwnProperty
+    isPrototypeOf propertyIsEnumerable __proto__ __defineGetter__ __defineSetter__ __lookupGetter__ __lookupSetter__""".split())
+
+
+def safe_id(cid):
+    return f"n-{cid}" if cid in JS_MEMBERS else cid
 
 
 class Diagram:
@@ -134,6 +146,7 @@ class Diagram:
 
     # -- low level ---------------------------------------------------------------------------------------------
     def _cell(self, cid, value, style, kind, parent, geom=None, children=()):
+        cid, parent = safe_id(cid), safe_id(parent)
         if cid in self._ids or cid in ("0", "1"):
             raise ValueError(f"duplicate id {cid!r}")
         self._ids.add(cid)
@@ -215,8 +228,8 @@ class Diagram:
             kids.append(ET.Element("mxPoint", {"as": "offset", "x": _num(label_dx), "y": "0"}))
         eid = id or f"e{len(self._cells)}"
         el = self._cell(eid, label_text(label), style, "edge", "1", None, kids)
-        el.set("source", src)
-        el.set("target", tgt)
+        el.set("source", safe_id(src))
+        el.set("target", safe_id(tgt))
         el.find("mxGeometry").set("relative", "1")
         if label_x is not None and abs(label_x) > 0.01:
             el.find("mxGeometry").set("x", f"{label_x:.3f}")

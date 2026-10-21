@@ -1,7 +1,7 @@
 """Obstacle-avoiding routes for edges that would cut through a node.
 
 draw.io routes an unpinned orthogonal edge by looking only at its two ends, so an edge between nodes in different groups
-can run straight through a third node. For every edge whose route (as layout.route_edges and labels.polyline know it)
+can run straight through a third node. For every edge whose route (as routing.route_edges and labels.polyline know it)
 hits a node, search a grid built from the nodes' own edges for the cheapest orthogonal path that stays clear of all of
 them (length plus a penalty per bend) and pin it with waypoints. Edges that are already clear are left alone, so moving
 a shape in draw.io still re-routes them.

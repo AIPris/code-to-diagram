@@ -1,6 +1,6 @@
 """Mechanical layout quality: what a reviewer would otherwise have to find by looking at the picture.
 
-Every route is explicit (layout.route_edges), so the polylines are known and defects are countable: edges that run
+Every route is explicit (routing.route_edges), so the polylines are known and defects are countable: edges that run
 through an unrelated node, edges that cross each other, labels lying on another edge. build prints these numbers, and
 emit uses the score to choose between a top-down and a left-to-right layout when the spec does not say which.
 """
@@ -32,6 +32,42 @@ def _cross(s, t):
     return hx0 + 2 < vx < hx1 - 2 and vy0 + 2 < hy < vy1 - 2
 
 
+JOG = 10        # a middle segment shorter than this (less than one lane, 12 px) is a wobble in a line meant to be straight, not a turn
+SHARE = 3       # two parallel runs closer than this look like one line
+
+
+def _corners(line):
+    """The polyline without repeated points and without points in the middle of a straight run."""
+    pts = [line[0]]
+    for p in line[1:]:
+        if math.dist(p, pts[-1]) > 0.5:
+            pts.append(p)
+    out = pts[:1]
+    for i in range(1, len(pts) - 1):
+        a, b, c = out[-1], pts[i], pts[i + 1]
+        if not (abs(a[0] - b[0]) < 0.5 and abs(b[0] - c[0]) < 0.5 or abs(a[1] - b[1]) < 0.5 and abs(b[1] - c[1]) < 0.5):
+            out.append(b)
+    return out + pts[-1:]
+
+
+def bends_and_jogs(line):
+    """(turns, kinks) of one edge: kinks are middle segments shorter than JOG, the small sideways steps that make a line wobble."""
+    pts = _corners(line)
+    lengths = [math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
+    return max(len(pts) - 2, 0), sum(1 for n in lengths[1:-1] if n < JOG)
+
+
+def _runs_overlap(s, t):
+    """Do two parallel axis-aligned segments of different edges lie on top of each other for more than a few px?"""
+    (a1, b1), (a2, b2) = s
+    (c1, d1), (c2, d2) = t
+    if abs(a1 - a2) < 0.5 and abs(c1 - c2) < 0.5:                      # both vertical
+        return abs(a1 - c1) < SHARE and min(max(b1, b2), max(d1, d2)) - max(min(b1, b2), min(d1, d2)) > 6
+    if abs(b1 - b2) < 0.5 and abs(d1 - d2) < 0.5:                      # both horizontal
+        return abs(b1 - d1) < SHARE and min(max(a1, a2), max(c1, c2)) - max(min(a1, a2), min(c1, c2)) > 6
+    return False
+
+
 def label_cost(rect, own, lines, solid):
     """Segments of other edges and nodes under a label rectangle (x, y, w, h): lower is better."""
     cost = 0
@@ -42,7 +78,7 @@ def label_cost(rect, own, lines, solid):
 
 
 def evaluate(lines, boxes, edges, leaves, label_conflicts, size):
-    """lines {edge idx: polyline}. -> dict(node_hits, crossings, label_conflicts, score)."""
+    """lines {edge idx: polyline}. -> dict(node_hits, crossings, label_conflicts, bends, jogs, shared, score)."""
     hits = 0
     for idx, line in lines.items():
         a, b, _ = edges[idx]
@@ -53,5 +89,11 @@ def evaluate(lines, boxes, edges, leaves, label_conflicts, size):
     crossings = sum(1 for i in range(len(segs)) for j in range(i + 1, len(segs)) if segs[i][0] != segs[j][0] and _cross(segs[i][1], segs[j][1]))
     w, h = size
     aspect = abs(math.log(max(w, 1) / max(h, 1) / 1.6))
-    score = 25 * hits + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6
-    return dict(node_hits=hits, crossings=crossings, label_conflicts=label_conflicts, score=score)
+    bends = jogs = 0
+    for line in lines.values():
+        b, j = bends_and_jogs(line)
+        bends, jogs = bends + b, jogs + j
+    merged = [(idx, s) for idx, line in lines.items() for s in _segments(_corners(line))]
+    shared = sum(1 for i in range(len(merged)) for j in range(i + 1, len(merged)) if merged[i][0] != merged[j][0] and _runs_overlap(merged[i][1], merged[j][1]))
+    score = 25 * hits + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared
+    return dict(node_hits=hits, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, score=score)

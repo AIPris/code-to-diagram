@@ -42,9 +42,10 @@ what the diagram should say), and deterministic scripts do the rest:
 
 - **Mermaid in, draw.io out.** The agent never writes XML or coordinates. A 30-node diagram is a few lines of spec
   instead of thousands of output tokens.
-- **Automatic layered layout.** Ranks, node order, container sizes, edge corridors and separate ports for edges that
-  share a side are computed for you, then measured: edges running through nodes, edge crossings and labels lying on
-  lines are reported, with a hint on what to cut.
+- **Automatic layered layout with straight lines.** Ranks, node order, container sizes and a lane for every long edge
+  are computed for you. Ports line up so that edges run straight, long edges leave a node from the side that faces
+  their lane, and the result is measured: edges running through nodes, crossings, kinks, edges drawn on top of each
+  other, bends and labels lying on lines are reported, with a hint on what to cut.
 - **Genuinely editable.** The `.drawio` is plain uncompressed XML. Edges are glued to their shapes (move a box and
   the arrows follow) and groups are real containers, so you can keep working in draw.io, diagrams.net or the VS Code
   draw.io extension.
@@ -65,8 +66,8 @@ what the diagram should say), and deterministic scripts do the rest:
 
 ### Import / dependency graph
 
-The skill's own module graph: scanned with `c2d.py deps --entry c2d.py`, then built with `c2d.py build`. All 14 solid
-arrows were checked against real imports.
+The skill's own module graph: scanned with `c2d.py deps skills/code-to-diagram/scripts --entry c2d.py --exclude selftest
+--exclude fuzz`, then built with `c2d.py build`. All 18 solid arrows were checked against real imports.
 
 <p align="center">
   <img src="examples/import-graph/import-graph.png" width="100%"
@@ -237,7 +238,9 @@ flowchart TD
 | --- | --- |
 | `c2d.py` | The command line: `build`, `deps`, `check`, `digest`, `png` |
 | `mermaid.py` | Parses the supported Mermaid subset and reports unsupported lines by number |
-| `layout.py`, `reroute.py`, `metrics.py` | Layered layout, edge routing and the layout measurements |
+| `layout.py` | Layered layout: ranks, node order, coordinates, container sizes, lanes for long edges |
+| `routing.py`, `ports.py`, `reroute.py` | Edge routing: sides, ports that line up, tracks between ranks, detours around nodes |
+| `metrics.py` | The layout measurements: crossings, bends, kinks, overlaps |
 | `sequence.py`, `emit.py`, `labels.py`, `drawio_lib.py` | Turn the model into draw.io XML |
 | `validate_drawio.py` | Structural checks: glued edges, overlaps, clipped rows, label escaping |
 | `facts.py`, `deps.py` | Name and import checks against the source, and the import scanner |

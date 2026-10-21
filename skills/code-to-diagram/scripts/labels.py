@@ -1,7 +1,7 @@
 """Edge label placement.
 
 draw.io puts an edge label at the middle of the edge, so labels of neighbouring edges land on top of each other or on a
-node. Every route is explicit by the time labels are placed (layout.route_edges), so the polyline of each edge is known:
+node. Every route is explicit by the time labels are placed (routing.route_edges), so the polyline of each edge is known:
 slide each label along its own edge to the first spot where it overlaps no node and no earlier label. draw.io stores
 that as the label's relative position along the edge (mxGeometry x in -1..1), so it stays editable.
 """
@@ -15,10 +15,11 @@ END_ZONE = 45                                                 # px at each end o
 
 
 def polyline(plan, s, t):
-    """Corner points of an edge as draw.io routes it: port, waypoints, port, with an elbow where two points do not line up."""
+    """Corner points of an edge as draw.io routes it: port, waypoints, port, with an elbow where two points do not line up.
+    The ports are where the edge really attaches (exit_at, entry_at) when the plan says so, else the anchor fractions on the box."""
     at = lambda box, f: (box[0] + f[0] * box[2], box[1] + f[1] * box[3])
     side = lambda f: f[0] in (0, 1) and 0 < f[1] < 1             # port on a left/right side
-    pts = [at(s, plan["exit"])] + list(plan["points"]) + [at(t, plan["entry"])]
+    pts = [plan.get("exit_at") or at(s, plan["exit"])] + list(plan["points"]) + [plan.get("entry_at") or at(t, plan["entry"])]
     out = [pts[0]]
     for i in range(1, len(pts)):
         a, b = out[-1], pts[i]
