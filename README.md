@@ -225,14 +225,12 @@ The agent then reports the paths, what the diagram shows, what it left out and a
 ## How it works
 
 ```mermaid
-flowchart LR
-  A(["You: diagram this code"]) --> B["Agent reads the code<br/>and writes a Mermaid spec"]
-  B --> C["c2d.py build"]
-  C --> D["Automatic layout"]
-  D --> E[".drawio<br/>edges glued to shapes"]
-  E --> F{"Structure, names and<br/>imports check out?"}
-  F -->|"findings: fix the spec"| B
-  F -->|yes| G[".png<br/>verified complete"]
+flowchart TD
+  A(["You: diagram this code"]) --> B["Agent writes a short<br/>Mermaid spec"]
+  B --> C["c2d.py build:<br/>layout and .drawio"]
+  C --> D{"Structure, names and<br/>imports check out?"}
+  D -->|"no: fix the spec"| B
+  D -->|yes| E(["Verified .png<br/>plus editable .drawio"])
 ```
 
 | Script | Responsibility |
