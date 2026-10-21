@@ -1,0 +1,39 @@
+%% src: skills/code-to-diagram/scripts
+flowchart LR
+  subgraph all_ ["13 modules imported by c2d.py"]
+    skills_code_to_diagram_scripts_deps_py["deps.py"]:::leaf
+    skills_code_to_diagram_scripts_drawio_lib_py["drawio_lib.py"]:::leaf
+    skills_code_to_diagram_scripts_emit_py["emit.py"]:::mod
+    skills_code_to_diagram_scripts_facts_py["facts.py"]:::mod
+    skills_code_to_diagram_scripts_labels_py["labels.py"]:::mod
+    skills_code_to_diagram_scripts_layout_py["layout.py"]:::mod
+    skills_code_to_diagram_scripts_metrics_py["metrics.py"]:::hub
+    skills_code_to_diagram_scripts_reroute_py["reroute.py"]:::mod
+    skills_code_to_diagram_scripts_sequence_py["sequence.py"]:::mod
+    subgraph alone_12 ["no imports among the modules shown (4)"]
+      skills_code_to_diagram_scripts_digest_drawio_py["digest_drawio.py"]:::leaf
+      skills_code_to_diagram_scripts_mermaid_py["mermaid.py"]:::leaf
+      skills_code_to_diagram_scripts_render_py["render.py"]:::leaf
+      skills_code_to_diagram_scripts_validate_drawio_py["validate_drawio.py"]:::leaf
+    end
+  end
+  skills_code_to_diagram_scripts_c2d_py["c2d.py"]:::entry
+  skills_code_to_diagram_scripts_c2d_py -->|"imports 8"| all_
+  skills_code_to_diagram_scripts_emit_py --> skills_code_to_diagram_scripts_drawio_lib_py
+  skills_code_to_diagram_scripts_emit_py --> skills_code_to_diagram_scripts_layout_py
+  skills_code_to_diagram_scripts_emit_py --> skills_code_to_diagram_scripts_sequence_py
+  skills_code_to_diagram_scripts_emit_py --> skills_code_to_diagram_scripts_labels_py
+  skills_code_to_diagram_scripts_emit_py --> skills_code_to_diagram_scripts_metrics_py
+  skills_code_to_diagram_scripts_facts_py --> skills_code_to_diagram_scripts_deps_py
+  skills_code_to_diagram_scripts_labels_py --> skills_code_to_diagram_scripts_drawio_lib_py
+  skills_code_to_diagram_scripts_labels_py --> skills_code_to_diagram_scripts_metrics_py
+  skills_code_to_diagram_scripts_layout_py --> skills_code_to_diagram_scripts_metrics_py
+  skills_code_to_diagram_scripts_layout_py --> skills_code_to_diagram_scripts_reroute_py
+  skills_code_to_diagram_scripts_reroute_py --> skills_code_to_diagram_scripts_labels_py
+  skills_code_to_diagram_scripts_reroute_py --> skills_code_to_diagram_scripts_metrics_py
+  skills_code_to_diagram_scripts_sequence_py --> skills_code_to_diagram_scripts_drawio_lib_py
+  classDef entry fill:#e1d5e7,stroke:#9673a6
+  classDef hub fill:#fff2cc,stroke:#d6b656
+  classDef leaf fill:#d5e8d4,stroke:#82b366
+  classDef mod fill:#dae8fc,stroke:#6c8ebf
+%% legend: entry=entry point; hub=imported by 4+ of the files shown; leaf=imports nothing else in the scanned code; mod=other module

@@ -1,0 +1,106 @@
+<mxfile host="app.diagrams.net" agent="code-to-diagram">
+  <diagram id="c2d-ee3e5608031f" name="Page-1">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1552" pageHeight="912" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="seq-hd-A" value="Agent" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="150.40" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-ll-A" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="110.20" y="90" width="10" height="782" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-hd-C" value="c2d.py" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="287.20" y="40" width="150.40" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-ll-C" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="357.40" y="90" width="10" height="782" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-hd-M" value="mermaid.py" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="520.80" y="40" width="150.40" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-ll-M" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="591" y="90" width="10" height="782" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-hd-E" value="emit.py" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="731.20" y="40" width="150.40" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-ll-E" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="801.40" y="90" width="10" height="782" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-hd-V" value="validate_drawio.py" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="941.60" y="40" width="150.40" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-ll-V" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1011.80" y="90" width="10" height="782" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-hd-F" value="facts.py" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1152.00" y="40" width="150.40" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-ll-F" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1222.20" y="90" width="10" height="782" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-hd-R" value="render.py" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1362.40" y="40" width="150.40" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-ll-R" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1432.60" y="90" width="10" height="782" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-fr0" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;dashed=1;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="24" y="202" width="1504.80" height="650" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-fr0-tag" value="&lt;b&gt;alt&lt;/b&gt; [spec errors]" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="28" y="204" width="300" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-fr0-else0" value="" style="line;strokeWidth=1;dashed=1;html=1;fillColor=none;strokeColor=#666666;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="24" y="332" width="1504.80" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-fr0-else0-tag" value="[spec is valid]" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="28" y="338" width="300" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="seq-m0" value="1. build diagram.mmd" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=block;endFill=1;edgeStyle=none;exitX=1.000;exitY=0.061;exitDx=0;exitDy=0;entryX=0.000;entryY=0.061;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-A" target="seq-ll-C">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m1" value="2. parse(spec)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=block;endFill=1;edgeStyle=none;exitX=1.000;exitY=0.123;exitDx=0;exitDy=0;entryX=0.000;entryY=0.123;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-C" target="seq-ll-M">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m3" value="3. errors with line numbers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.223;exitDx=0;exitDy=0;entryX=1.000;entryY=0.223;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-M" target="seq-ll-C">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m4" value="4. SPEC ERRORS, nothing built" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.284;exitDx=0;exitDy=0;entryX=1.000;entryY=0.284;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-C" target="seq-ll-A">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m6" value="5. model" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.386;exitDx=0;exitDy=0;entryX=1.000;entryY=0.386;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-M" target="seq-ll-C">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m7" value="6. build(model)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=block;endFill=1;edgeStyle=none;exitX=1.000;exitY=0.448;exitDx=0;exitDy=0;entryX=0.000;entryY=0.448;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-C" target="seq-ll-E">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m8" value="7. laid-out diagram" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.509;exitDx=0;exitDy=0;entryX=1.000;entryY=0.509;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-E" target="seq-ll-C">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m9" value="8. validate(drawio)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=block;endFill=1;edgeStyle=none;exitX=1.000;exitY=0.570;exitDx=0;exitDy=0;entryX=0.000;entryY=0.570;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-C" target="seq-ll-V">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m10" value="9. structure ok" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.632;exitDx=0;exitDy=0;entryX=1.000;entryY=0.632;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-V" target="seq-ll-C">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m11" value="10. check(model, srcs)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=block;endFill=1;edgeStyle=none;exitX=1.000;exitY=0.693;exitDx=0;exitDy=0;entryX=0.000;entryY=0.693;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-C" target="seq-ll-F">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m12" value="11. names and imports match the code" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.754;exitDx=0;exitDy=0;entryX=1.000;entryY=0.754;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-F" target="seq-ll-C">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m13" value="12. render(drawio, png)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=block;endFill=1;edgeStyle=none;exitX=1.000;exitY=0.816;exitDx=0;exitDy=0;entryX=0.000;entryY=0.816;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-C" target="seq-ll-R">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m14" value="13. verified PNG" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.877;exitDx=0;exitDy=0;entryX=1.000;entryY=0.877;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-R" target="seq-ll-C">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="seq-m15" value="14. report with paths" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;endArrow=none;html=1;fontSize=11;labelBackgroundColor=#ffffff;verticalAlign=bottom;endArrow=open;endFill=0;dashed=1;edgeStyle=none;exitX=0.000;exitY=0.939;exitDx=0;exitDy=0;entryX=1.000;entryY=0.939;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq-ll-C" target="seq-ll-A">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

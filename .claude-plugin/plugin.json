@@ -1,0 +1,25 @@
+{
+  "name": "code-to-diagram",
+  "version": "1.0.0",
+  "description": "Turn code into editable draw.io diagrams (.drawio + verified PNG): class, ER, sequence, state, flowchart, import/dependency and architecture diagrams, generated from a short Mermaid spec with automatic layout and checked against your source.",
+  "author": {
+    "name": "AIPris",
+    "url": "https://github.com/AIPris"
+  },
+  "homepage": "https://github.com/AIPris/code-to-diagram",
+  "repository": "https://github.com/AIPris/code-to-diagram",
+  "license": "MIT",
+  "keywords": [
+    "drawio",
+    "diagrams",
+    "mermaid",
+    "uml",
+    "class-diagram",
+    "sequence-diagram",
+    "er-diagram",
+    "flowchart",
+    "dependency-graph",
+    "architecture-diagram",
+    "code-visualization"
+  ]
+}

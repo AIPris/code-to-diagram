@@ -1,0 +1,27 @@
+%% src: skills/code-to-diagram/scripts
+sequenceDiagram
+  autonumber
+  participant A as Agent
+  participant C as c2d.py
+  participant M as mermaid.py
+  participant E as emit.py
+  participant V as validate_drawio.py
+  participant F as facts.py
+  participant R as render.py
+  A->>C: build diagram.mmd
+  C->>M: parse(spec)
+  alt spec errors
+    M-->>C: errors with line numbers
+    C-->>A: SPEC ERRORS, nothing built
+  else spec is valid
+    M-->>C: model
+    C->>E: build(model)
+    E-->>C: laid-out diagram
+    C->>V: validate(drawio)
+    V-->>C: structure ok
+    C->>F: check(model, srcs)
+    F-->>C: names and imports match the code
+    C->>R: render(drawio, png)
+    R-->>C: verified PNG
+    C-->>A: report with paths
+  end

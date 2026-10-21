@@ -1,0 +1,19 @@
+{
+  "name": "code-to-diagram",
+  "owner": {
+    "name": "AIPris",
+    "url": "https://github.com/AIPris"
+  },
+  "metadata": {
+    "description": "code-to-diagram: turn code into editable draw.io diagrams, a Claude Code skill.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "code-to-diagram",
+      "source": "./",
+      "description": "Turn code into editable draw.io diagrams (.drawio + verified PNG): class, ER, sequence, state, flowchart and dependency diagrams from a short Mermaid spec, laid out automatically and checked against your source.",
+      "category": "development"
+    }
+  ]
+}
