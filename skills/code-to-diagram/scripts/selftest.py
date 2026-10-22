@@ -253,12 +253,46 @@ def python_import_statements(tmp):
     return problems
 
 
+def python_import_roots(tmp):
+    """In-project absolute imports link the same files whether the scan paths are written relative or absolute."""
+    tree(tmp, {"pkg/__init__.py": "", "pkg/b.py": "", "pkg/utils.py": "", "pkg/sub/__init__.py": "", "pkg/sub/c.py": "", "pkg/sub/d.py": "", "utils.py": "",
+               "pkg/a.py": "from pkg import b\nimport pkg.sub.c\nfrom pkg.sub import d\nimport os, requests\n",
+               "pkg/n.py": "import utils\n", "scripts/run.py": "import helper\n", "scripts/helper.py": ""})
+    rel = lambda p: (os.path.relpath(p, tmp) if os.path.isabs(p) else p).replace(os.sep, "/")
+    scan = lambda *paths: deps.scan(deps.collect(list(paths), []))
+    named = lambda g: {rel(f): sorted(rel(t) for t in ts) for f, ts in g.items()}
+    want = {"pkg/a.py": ["pkg/__init__.py", "pkg/b.py", "pkg/sub/__init__.py", "pkg/sub/c.py", "pkg/sub/d.py"],     # os and requests are not project files
+            "pkg/n.py": ["pkg/utils.py"],                                                                         # the nearest utils.py, not the one at the top
+            "scripts/run.py": ["scripts/helper.py"]}                                                              # a script imports its neighbour
+    problems, here = [], os.getcwd()
+    os.chdir(tmp)
+    try:
+        relative = {"whole project": named(scan(".")), "package": named(scan("pkg"))}
+    finally:
+        os.chdir(here)
+    absolute = {"whole project": named(scan(tmp)), "package": named(scan(os.path.join(tmp, "pkg")))}
+    for spelling, graphs in (("relative", relative), ("absolute", absolute)):
+        for what, got in graphs.items():
+            for f, targets in want.items():
+                if f in got and got[f] != targets:
+                    problems.append(f"{spelling} paths, {what}: {f} -> {got[f]}, expected {targets}")
+    for what in relative:
+        if relative[what] != absolute[what]:
+            problems.append(f"{what}: relative and absolute paths give different graphs")
+    g = scan(os.path.join(tmp, "pkg"))
+    a = os.path.join(tmp, "pkg", "a.py")
+    if os.path.join(tmp, "pkg", "b.py") not in deps.reach(g, a, 1):
+        problems.append("--reach 1 from a module dropped a package-qualified import")
+    return problems
+
+
 REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
     ("names: whole identifiers and file names only", whole_name_matching),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
     ("deps: Python import statements in any layout", python_import_statements),
+    ("deps: Python imports resolve for relative and absolute scan paths", python_import_roots),
 ]
 
 
