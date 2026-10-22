@@ -14,6 +14,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import c2d  # noqa: E402
+import deps  # noqa: E402
 import drawio_lib  # noqa: E402
 import emit  # noqa: E402
 import facts  # noqa: E402
@@ -180,9 +181,35 @@ def whole_name_matching(tmp):
     return problems
 
 
+def import_arrows(tmp):
+    """A solid arrow between two files is judged by those files' own imports, wherever a same-named file lives."""
+    tree(tmp, {"src/one/a.js": "", "src/b.js": "", "src/c.js": "", "src/d.js": "", "src/two/a.js": "import '../b.js';\nimport '../c.js';\nimport '../d.js';\n"})
+    src = os.path.join(tmp, "src")
+    check = lambda spec: facts.check_edges(mermaid.parse("flowchart TB\n" + spec), [src])
+    one = 'A["src/one/a.js"]'
+    two = 'A["src/two/a.js"]'
+    problems = []
+    for name, got, want in (
+            ("explicit path, no import behind it", check(f' {one} --> B["src/b.js"]\n A --> C["src/c.js"]\n'), (2, [("A", "B"), ("A", "C")], 0)),
+            ("explicit path, real imports", check(f' {two} --> B["src/b.js"]\n A --> C["src/c.js"]\n'), (2, [], 0)),
+            ("bare file name that fits two files", check(' A["a.js"] --> B["b.js"]\n A --> C["c.js"]\n'), (0, [], 2)),
+            ("group stands for its members", check(f' subgraph G ["core"]\n  B["src/b.js"]\n  C["src/c.js"]\n end\n {two} --> G\n A --> D["src/d.js"]\n'), (2, [], 0))):
+        if got != want:
+            problems.append(f"{name}: {got}, expected {want}")
+    pkgs = {f"{p}/{f}": text for p in ("pkg1", "pkg2") for f, text in (("__init__.py", ""), ("a.py", "from . import b\n"), ("b.py", ""))}
+    root = os.path.join(tmp, "pkgs")
+    tree(root, pkgs)                                              # what deps draws: bare file names inside a "dir/" subgraph
+    spec = deps.mermaid(deps.scan(deps.collect([root], [])), srcs=[root])
+    got = facts.check_edges(mermaid.parse(spec), [root])
+    if got != (4, [], 0):
+        problems.append(f"deps output with two packages of the same file names: {got}, expected (4, [], 0)")
+    return problems
+
+
 REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
     ("names: whole identifiers and file names only", whole_name_matching),
+    ("imports: arrows checked against the file they name", import_arrows),
 ]
 
 

@@ -5,6 +5,7 @@ diagram shows and look each one up in the files named by `%% src:`. It cannot ju
 for imports the `deps` command reads them from the code instead of from the model.
 """
 import os
+import posixpath
 import re
 
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", "__pycache__", ".venv", "venv", "coverage", ".next"}
@@ -69,17 +70,21 @@ def claims(model):
     return out
 
 
-FILE_NAME = re.compile(r"[\w.-]+\.(?:js|mjs|cjs|jsx|ts|tsx|py)(?![\w])")
+FILE_NAME = re.compile(r"(?:[\w.-]+[/\\])*[\w.-]+\.(?:js|mjs|cjs|jsx|ts|tsx|py)(?![\w])")
 
 
 def check_edges(model, srcs):
     """Solid arrows between nodes that name source files claim 'imports'. -> (checked, [(from, to)] with no import behind
-    them in either direction), or None when fewer than two such arrows can be judged. Dashed arrows are not checked."""
+    them in either direction, arrows not judged because a name fits several scanned files), or None when fewer than two
+    arrows can be judged and none was skipped. Dashed arrows are not checked.
+    A name is matched by the end of its path: `src/one/a.js` is that file only; a bare `a.js` is read inside the nearest
+    enclosing subgraph titled like a directory (what `deps` draws), and is not judged when it still fits several files."""
     import deps
     files = deps.collect([p for p in srcs if os.path.exists(p)], [])
     if not files:
         return None
     graph = deps.scan(files)
+    posix = lambda f: f.replace(os.sep, "/")
     by_name = {}
     for f in files:
         by_name.setdefault(os.path.basename(f), set()).add(f)
@@ -91,27 +96,49 @@ def check_edges(model, srcs):
         if g.parent:
             children.setdefault(g.parent, []).append(g.id)
 
-    def named(i):                                          # source files a node (or group, by its members) stands for
+    def directory(node):                                   # "src/one/" for a node inside a subgraph of that title
+        g = model.groups.get(node.parent)
+        while g and not g.label.endswith("/"):
+            g = model.groups.get(g.parent)
+        return g.label if g else ""
+
+    def files_named(name, prefix):
+        name = name.replace("\\", "/")
+        for want in ([name] if "/" in name or not prefix else [prefix + name, name]):
+            want = posixpath.normpath(want)
+            hits = {f for f in by_name.get(posixpath.basename(want), ()) if posix(f) == want or posix(f).endswith("/" + want)}
+            if hits:
+                return hits
+        return set()
+
+    def named(i):                                          # (source files, a name fits several) for a node, or a group by its members
         node = model.nodes.get(i)
-        out = set()
+        out, vague = set(), False
         if node:
             for name in FILE_NAME.findall(node.label):
-                out |= by_name.get(os.path.basename(name), set())
+                hits = files_named(name, directory(node))
+                if len(hits) == 1:
+                    out |= hits
+                vague |= len(hits) > 1
         for c in children.get(i, []):
-            out |= named(c)
-        return out
+            o, v = named(c)
+            out, vague = out | o, vague or v
+        return out, vague
 
-    checked, bad = 0, []
+    checked, bad, unclear = 0, [], 0
     for e in model.edges:
         if e.line != "solid" or e.kind != "flow":
             continue
-        a, b = named(e.src), named(e.tgt)
-        if not a or not b or a == b:
+        (a, va), (b, vb) = named(e.src), named(e.tgt)
+        if not (a or va) or not (b or vb):                 # not an arrow between source files
             continue
-        checked += 1
-        if not any(y in graph.get(x, ()) or x in graph.get(y, ()) for x in a for y in b):
-            bad.append((e.src, e.tgt))
-    return (checked, bad) if checked >= 2 else None
+        if va or vb:
+            unclear += 1
+        elif a != b:
+            checked += 1
+            if not any(y in graph.get(x, ()) or x in graph.get(y, ()) for x in a for y in b):
+                bad.append((e.src, e.tgt))
+    return (checked, bad, unclear) if checked >= 2 or unclear else None
 
 
 def has_word(text, tok):

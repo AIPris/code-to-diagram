@@ -144,12 +144,14 @@ def cmd_build(argv):
     if model.kind == "flow":
         er = facts.check_edges(model, srcs)
         if er:
-            checked, bad = er
+            checked, bad, unclear = er
             if bad:
                 print(f"imports: {len(bad)} of {checked} solid arrows between source files have NO import behind them (either direction): "
                       + ", ".join(f"{a} -> {b}" for a, b in bad[:5]) + "; fix them, or draw other relations dashed")
-            else:
+            elif checked:
                 print(f"imports: all {checked} solid arrows between source files match a real import")
+            if unclear:
+                print(f"imports: {unclear} solid arrows NOT CHECKED - a file name in them fits several source files; write its directory in the label (src/one/a.js)")
     if max(w, h) > 3500:
         print(f"size: {int(w)}x{int(h)} px is too large to read in one image; drop leaf nodes, wrap groups or split the diagram")
     if "--no-png" not in argv:
