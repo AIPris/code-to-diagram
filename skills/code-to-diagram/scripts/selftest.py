@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import c2d  # noqa: E402
 import drawio_lib  # noqa: E402
 import emit  # noqa: E402
+import facts  # noqa: E402
 import mermaid  # noqa: E402
 from validate_drawio import validate  # noqa: E402
 
@@ -158,8 +159,30 @@ def many_missing_names(tmp):
     return problems
 
 
+def names_missing(label, *paths):
+    """The names in a node label that `facts.check` cannot find under paths."""
+    res = facts.check(mermaid.parse(f'flowchart TB\n A["{label}"]\n'), list(paths))
+    return [tok for tok, _ in res[1]]
+
+
+def whole_name_matching(tmp):
+    """A name counts as found only as a whole identifier or file name, not inside a longer one."""
+    tree(tmp, {"a/source.py": "def load_users():\n    my_user_id = 1\n    ids = user_ids\n", "a/main.js": "", "b/domain.js": ""})
+    a, b = os.path.join(tmp, "a"), os.path.join(tmp, "b")
+    problems = []
+    for label, where, want in (("load_users", a, []), ("load_user", a, ["load_user"]),             # singular of a plural name
+                               ("my_user_id", a, []), ("user_id", a, ["user_id"]),                 # suffix of a longer name
+                               ("user_ids", a, []), ("load_users_all", a, ["load_users_all"]),    # prefix of the claimed name
+                               ("main.js", a, []), ("main.js", b, ["main.js"])):                  # domain.js is not main.js
+        got = names_missing(label, where)
+        if got != want:
+            problems.append(f"{label} in {os.path.basename(where)}/: missing {got}, expected {want}")
+    return problems
+
+
 REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
+    ("names: whole identifiers and file names only", whole_name_matching),
 ]
 
 
