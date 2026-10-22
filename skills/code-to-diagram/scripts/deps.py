@@ -10,6 +10,7 @@ classDef hub (imported by 4+ files) and leaf (imports nothing), and a `%% src:` 
 check names against the source.
 """
 import argparse
+import ast
 import os
 import re
 import sys
@@ -69,6 +70,21 @@ def resolve_py(frm, dots, mod, names, known):
     return out
 
 
+def py_imports(text):
+    """[(dots, module, names)] for each Python import statement: `from` imports first, then plain ones, each in source order.
+    Source that does not parse (Python 2, newer syntax, template placeholders) is read line by line instead, which
+    cannot see an import that continues over several lines."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):                         # ValueError: null bytes, before Python 3.12
+        return ([(dots, mod, [n.strip().split(" as ")[0] for n in rest.replace("(", "").replace(")", "").split(",") if n.strip()])
+                 for dots, mod, rest in PY_FROM.findall(text)]
+                + [("", mod, []) for group in PY_IMPORT.findall(text) for mod in re.split(r"\s*,\s*", group)])
+    nodes = sorted((n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))), key=lambda n: n.lineno)
+    return ([("." * n.level, n.module or "", [a.name for a in n.names]) for n in nodes if isinstance(n, ast.ImportFrom)]
+            + [("", a.name, []) for n in nodes if isinstance(n, ast.Import) for a in n.names])
+
+
 def scan(files):
     known = set(files)
     edges = {f: [] for f in files}
@@ -79,12 +95,8 @@ def scan(files):
             continue
         found = []
         if f.endswith(".py"):
-            for dots, mod, rest in PY_FROM.findall(text):
-                names = [n.strip().split(" as ")[0] for n in rest.replace("(", "").replace(")", "").split(",") if n.strip()]
+            for dots, mod, names in py_imports(text):
                 found += resolve_py(f, dots, mod, names, known)
-            for group in PY_IMPORT.findall(text):
-                for mod in re.split(r"\s*,\s*", group):
-                    found += resolve_py(f, "", mod, [], known)
         else:
             text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
             text = re.sub(r"(?m)^\s*//.*$", "", text)

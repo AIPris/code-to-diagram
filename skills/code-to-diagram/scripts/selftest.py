@@ -224,11 +224,41 @@ def distinct_ids(tmp):
     return problems
 
 
+def python_import_statements(tmp):
+    """However an import statement is written, it links the same modules; text that only looks like one does not."""
+    variants = {"single line": "from . import b, c\n",
+                "parenthesized": "from . import (\n    b,\n    c,\n)\n",
+                "aliases, comments, trailing comma": "from . import (\n    b as bb,  # first\n    c,  # second\n)\n",
+                "backslash continuation": "from . import b, \\\n    c\n",
+                "inside a function": "def f():\n    from . import (\n        b,\n        c,\n    )\n",
+                "not Python 3 syntax": 'print "hi"\nfrom . import b, c\n'}
+    problems, edges = [], {}
+    for name, text in {**variants, "named in a docstring and a comment": '"""from . import b"""\n# from . import c\n'}.items():
+        key = re.sub(r"\W", "_", name)
+        tree(tmp, {f"{key}/pkg/__init__.py": "", f"{key}/pkg/b.py": "", f"{key}/pkg/c.py": "", f"{key}/pkg/a.py": text})
+        graph = deps.scan(deps.collect([os.path.join(tmp, key, "pkg")], []))
+        a = os.path.join(tmp, key, "pkg", "a.py")
+        edges[name] = sorted(os.path.relpath(t, os.path.join(tmp, key)).replace(os.sep, "/") for t in graph[a])
+        if name == "parenthesized":
+            kept = deps.reach(graph, a, 1)
+            if not {os.path.join(os.path.dirname(a), m) for m in ("b.py", "c.py")} <= set(kept):
+                problems.append(f"--reach 1 dropped a module imported by the parenthesized form: {sorted(kept)}")
+    for name in variants:
+        if edges[name] != edges["single line"]:
+            problems.append(f"{name}: {edges[name]}, the single-line form gives {edges['single line']}")
+    if not {"pkg/b.py", "pkg/c.py"} <= set(edges["single line"]):
+        problems.append(f"single line: {edges['single line']} lacks b.py or c.py")
+    if edges["named in a docstring and a comment"]:
+        problems.append(f"text that is not an import linked {edges['named in a docstring and a comment']}")
+    return problems
+
+
 REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
     ("names: whole identifiers and file names only", whole_name_matching),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
+    ("deps: Python import statements in any layout", python_import_statements),
 ]
 
 
