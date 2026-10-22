@@ -132,7 +132,25 @@ def mermaid(edges, entry=None, groups=True, drop_entry_edges=None, direction="TB
     for f, ts in edges.items():
         for t in ts:
             indeg[t] = indeg.get(t, 0) + 1
-    ident = {f: re.sub(r"\W", "_", f) for f in files}
+    used = {"all_"}
+
+    def fresh(key, suffix=""):                                 # a Mermaid id no other node or group has: "a-b" and "a_b" must not merge
+        base = re.sub(r"\W", "_", key) + suffix
+        out, n = base, 1
+        while out in used:
+            n += 1
+            out = f"{base}_{n}"
+        used.add(out)
+        return out
+
+    ident = {f: fresh(f) for f in files}
+    group_ids = {}
+
+    def group_id(d):
+        if d not in group_ids:
+            group_ids[d] = fresh(d, "_g")
+        return group_ids[d]
+
     label = lambda f: os.path.basename(f)
     quote = lambda p: f'"{p}"' if " " in p else p
     lines = [f"%% src: {' '.join(quote(p.replace(os.sep, '/')) for p in srcs)}", f"flowchart {direction}"]
@@ -150,7 +168,7 @@ def mermaid(edges, entry=None, groups=True, drop_entry_edges=None, direction="TB
         for d, fs in by_dir.items():
             nested = d and len(by_dir) > 1
             if nested:
-                lines.append(f'    subgraph {re.sub(chr(92) + "W", "_", d)}_g ["{d.replace(os.sep, "/")}/"]')
+                lines.append(f'    subgraph {group_id(d)} ["{d.replace(os.sep, "/")}/"]')
             alone = [f for f in fs if not edges[f] and not indeg[f]]
             for f in fs:
                 if f not in alone:
@@ -171,7 +189,7 @@ def mermaid(edges, entry=None, groups=True, drop_entry_edges=None, direction="TB
             by_dir.setdefault(os.path.dirname(f) if groups else "", []).append(f)
         for d, fs in by_dir.items():
             if d and len(by_dir) > 1:
-                lines.append(f'  subgraph {re.sub(chr(92) + "W", "_", d)}_g ["{d.replace(os.sep, "/")}/"]')
+                lines.append(f'  subgraph {group_id(d)} ["{d.replace(os.sep, "/")}/"]')
             for f in fs:
                 emit_node(f)
             if d and len(by_dir) > 1:

@@ -206,10 +206,29 @@ def import_arrows(tmp):
     return problems
 
 
+def distinct_ids(tmp):
+    """Files and directories whose names differ only in - / _ keep separate nodes and groups through the Mermaid round trip."""
+    tree(tmp, {"src/foo-bar.js": "import './foo_bar.js';\n", "src/foo_bar.js": "", "x/a_b.js": "import '../x_a/b.js';\n", "x_a/b.js": "",
+               "my-dir/p.js": "", "my_dir/q.js": ""})
+    graph = deps.scan(deps.collect([tmp], []))
+    problems = []
+    for groups in (False, True):
+        model = mermaid.parse(deps.mermaid(graph, groups=groups, drop_entry_edges=False))
+        ends = {(model.nodes[e.src].label, model.nodes[e.tgt].label) for e in model.edges}
+        parent = {n.label: model.groups[n.parent].label.rstrip("/").rsplit("/", 1)[-1] for n in model.nodes.values() if n.parent}
+        for what, got, want in (("errors", model.errors, []), ("nodes", len(model.nodes), 6), ("groups", len(model.groups), 5 if groups else 0),
+                                ("edges", ends, {("foo-bar.js", "foo_bar.js"), ("a_b.js", "b.js")}),
+                                ("directory of p.js and q.js", (parent.get("p.js"), parent.get("q.js")), ("my-dir", "my_dir") if groups else (None, None))):
+            if got != want:
+                problems.append(f"{'with' if groups else 'without'} groups, {what}: {got}, expected {want}")
+    return problems
+
+
 REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
     ("names: whole identifiers and file names only", whole_name_matching),
     ("imports: arrows checked against the file they name", import_arrows),
+    ("deps: distinct ids for files and directories named alike", distinct_ids),
 ]
 
 
