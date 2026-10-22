@@ -47,6 +47,17 @@ def resolve_js(frm, spec, known):
     return None
 
 
+def ancestors(path):
+    """The directories above a file, nearest first, starting with the one it is in."""
+    d = os.path.dirname(path)
+    while True:
+        yield d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return
+        d = parent
+
+
 def resolve_py(frm, dots, mod, names, known):
     base = os.path.dirname(frm)
     if dots:
@@ -54,11 +65,11 @@ def resolve_py(frm, dots, mod, names, known):
             base = os.path.dirname(base)
         roots = [base]
     else:
-        roots = sorted({os.path.dirname(k) for k in known} | {"."}, key=len)[:1] + [base]
-    out = []
+        roots = ancestors(frm)                                # absolute import: the package root or script folder it is run from, as with sys.path
+    parts = mod.split(".") if mod else []
     for root in roots:
-        parts = mod.split(".") if mod else []
         stem = os.path.normpath(os.path.join(root, *parts)) if parts else os.path.normpath(root)
+        out = []
         for cand in (stem + ".py", os.path.join(stem, "__init__.py")):
             if cand in known:
                 out.append(cand)
@@ -67,7 +78,9 @@ def resolve_py(frm, dots, mod, names, known):
             cand = os.path.normpath(os.path.join(stem, n + ".py"))
             if cand in known:
                 out.append(cand)
-    return out
+        if out:                                               # the nearest directory that has the module wins
+            return out
+    return []
 
 
 def py_imports(text):
