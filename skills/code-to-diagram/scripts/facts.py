@@ -114,6 +114,17 @@ def check_edges(model, srcs):
     return (checked, bad) if checked >= 2 else None
 
 
+def has_word(text, tok):
+    """Is tok in text as a whole name? `load_user` is not in `load_users`, `main.js` is not in `domain.js`."""
+    i = text.find(tok)
+    while i >= 0:
+        j = i + len(tok)
+        if not re.search(r"\w", text[i - 1:i] + text[j:j + 1]):          # neither neighbour continues the name
+            return True
+        i = text.find(tok, i + 1)
+    return False
+
+
 def check(model, srcs):
     """-> (checked, missing [(token, where)], files read, source paths that do not exist), or None when no source path exists."""
     paths = [p for p in srcs if os.path.exists(p)]
@@ -125,6 +136,6 @@ def check(model, srcs):
         if tok in seen:
             continue
         seen.add(tok)
-        if tok not in text:
+        if not has_word(text, tok):
             missing.append((tok, where))
     return len(seen), missing, n, [p for p in srcs if p not in paths]
