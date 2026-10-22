@@ -137,8 +137,8 @@ def cmd_build(argv):
             print(f"names: note - `%% src:` paths not found, skipped: {' '.join(absent[:4])}")
         if missing:
             print(f"names: {len(missing)} of {checked} code names NOT FOUND in {n_files} source files (misspelled or invented?)")
-            for tok, where in cap(missing, 10):
-                print(f"  {tok}   (in {where})")
+            for line in cap([f"  {tok}   (in {where})" for tok, where in missing], 10):
+                print(line)
         else:
             print(f"names: all {checked} code names found in {n_files} source files")
     if model.kind == "flow":
