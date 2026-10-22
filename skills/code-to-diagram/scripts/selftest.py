@@ -5,6 +5,8 @@ Builds one small sample of every diagram type, validates the XML, and checks a f
 got wrong: edges glued to shapes, labels with "<" survive, no edge or label ends up pointing at a missing shape, and the
 lines come out clean (no kinks, no edges on top of each other, none through a node).
 """
+import contextlib
+import io
 import os
 import re
 import sys
@@ -116,6 +118,51 @@ SAMPLES = {
 }
 
 
+def tree(root, files):
+    """Create {relative path: text} under root; -> the created paths, in order."""
+    out = []
+    for rel, text in files.items():
+        path = os.path.join(root, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        out.append(path)
+    return out
+
+
+def build_output(mmd):
+    """What `c2d.py build --no-png` prints for a spec, and its exit code (None if it did not exit normally)."""
+    out, code = io.StringIO(), None
+    with contextlib.redirect_stdout(out):
+        try:
+            c2d.cmd_build([mmd, "--no-png"])
+        except SystemExit as e:
+            code = e.code
+    return out.getvalue(), code
+
+
+def many_missing_names(tmp):
+    """Any number of names missing from the source is a warning: the build prints ten, a summary, and carries on."""
+    problems = []
+    for n in (0, 1, 10, 11, 25):
+        nodes = "".join(f'  N{i}["missing_name_{i}"]\n' for i in range(n))
+        _, mmd = tree(tmp, {f"m{n}/source.py": "", f"m{n}/spec.mmd": f'%% src: "{os.path.join(tmp, f"m{n}", "source.py")}"\nflowchart TB\n{nodes}  K[ok]\n'})
+        text, code = build_output(mmd)
+        shown = len(re.findall(r"^  missing_name_\d+ ", text, re.M))
+        if code != 0:
+            problems.append(f"{n} missing: build exited {code}")
+        if shown != min(n, 10):
+            problems.append(f"{n} missing: {shown} listed, expected {min(n, 10)}")
+        if (f"... +{n - 10} more" in text) != (n > 10):
+            problems.append(f"{n} missing: wrong overflow summary")
+    return problems
+
+
+REGRESSIONS = [
+    ("build: more than ten names missing from the source", many_missing_names),
+]
+
+
 def main():
     failed = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -174,6 +221,14 @@ def main():
             model = mermaid.parse(block)
             print(f"{'FAIL' if model.errors else 'ok  '} SKILL.md example {block.split()[0]}" + (f"  {model.errors[:2]}" if model.errors else ""))
             failed += bool(model.errors)
+    for name, test in REGRESSIONS:
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                problems = test(tmp)
+            except Exception as e:                                  # a crash is a failure of that check, not of the run
+                problems = [f"{type(e).__name__}: {e}"]
+        print(f"{'FAIL' if problems else 'ok  '} {name}" + (f"  {problems[:3]}" if problems else ""))
+        failed += bool(problems)
     sys.exit(1 if failed else 0)
 
 
