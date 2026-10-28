@@ -10,6 +10,7 @@ from ports import widen
 from routing import route_edges
 
 M = 40
+TITLE_H = sequence.TITLE_H
 STRAIGHTEN_MAX = 120      # nodes up to which the straightened variant of each layout is tried as well
 KIND_OF = {"diamond": "diamond", "circle": "ellipse", "start": "ellipse", "end": "ellipse", "stadium": "stadium", "para": "para",
            "cylinder": "cylinder", "note": "note"}     # shapes whose outline decides where an edge can attach (ports.half)
@@ -97,6 +98,9 @@ def build(model):
     """-> (Diagram, (width, height))"""
     if model.kind == "sequence":
         d, size = sequence.build(model)
+        if model.legend:
+            size = (size[0], size[1] + legend(d, model, M, size[1]) + M)
+            d.height = size[1]
     else:
         d, size = _graph(model)
     return d, size
@@ -140,32 +144,35 @@ def _graph(model):
     W, H = res.extent
     d = Diagram()
     off = lambda p: M if not p else 0
+    oy = lambda p: off(p) + (TITLE_H if model.title and not p else 0)       # below the title
 
     for g, grp in model.groups.items():
         gid = gname[g]
         x, y = res.rel[gid]
         w, h = res.size[gid]
         p = parent[gid]
-        d.container(gid, grp.label, x + off(p), y + off(p), w, h, parent=p or "1")
+        d.container(gid, grp.label, x + off(p), y + oy(p), w, h, parent=p or "1")
     for i, n in model.nodes.items():
         x, y = res.rel[i]
         w, h = res.size[i]
         p = parent[i]
         color, fill, stroke, extra = look(model, n)
         if n.shape == "class":
-            d.class_box(i, n.label, n.members, x + off(p), y + off(p), w, n.methods, n.stereotype, color, p or "1", fill=fill, stroke=stroke)
+            d.class_box(i, n.label, n.members, x + off(p), y + oy(p), w, n.methods, n.stereotype, color, p or "1", fill=fill, stroke=stroke)
         else:
             label = "" if n.shape in ("start", "end", "fork") else "\n".join(wrap_lines(n.label, 34 if n.shape == "note" else 28))
-            d.box(i, label, x + off(p), y + off(p), w, h, SHAPE_OF.get(n.shape, "rounded"), color, p or "1", fill=fill, stroke=stroke,
+            d.box(i, label, x + off(p), y + oy(p), w, h, SHAPE_OF.get(n.shape, "rounded"), color, p or "1", fill=fill, stroke=stroke,
                   style=extra + ("aspect=fixed;" if n.shape == "circle" else ""))
     for k, e in enumerate(model.edges):
         pl = plan[k]
         kind, extra = edge_style(e)
         d.edge(resolve(e.src), resolve(e.tgt), edge_text[k], kind, extra, exit=pl.get("exit"), entry=pl.get("entry"),
-               points=[(x + M, y + M) for x, y in pl["points"]] or None, src_label=e.src_card, tgt_label=e.tgt_card, er=e.er,
+               points=[(x + M, y + M + (TITLE_H if model.title else 0)) for x, y in pl["points"]] or None, src_label=e.src_card, tgt_label=e.tgt_card, er=e.er,
                label_x=spots.get(k))
-    top = H + 2 * M
+    top = H + 2 * M + (TITLE_H if model.title else 0)
+    if model.title:
+        d.title(model.title, M, M)
     if model.legend:
-        top += legend(d, model, M, H + 2 * M) + M
+        top += legend(d, model, M, top) + M
     d.width, d.height = W + 2 * M, top
     return d, (W + 2 * M, top)

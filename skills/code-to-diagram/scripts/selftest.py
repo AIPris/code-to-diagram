@@ -219,6 +219,17 @@ def inline_exits(tmp):
     return [] if got == [1, 0, 0] else [f"inline pairs {got}, expected [1, 0, 0]"]
 
 
+def sequence_title_legend(tmp):
+    """`title` and `%% legend:` are drawn for sequence diagrams too, and a flowchart title keeps its edges glued."""
+    problems = []
+    for spec, want in (("%% legend: red=error path\nsequenceDiagram\n title Login flow\n A->>B: hi\n", ("Login flow", "error path")),
+                       ("flowchart TD\n title Pipeline\n A --> B\n", ("Pipeline",))):
+        d, _ = emit.build(mermaid.parse(spec))
+        body = open(d.save(os.path.join(tmp, "t.drawio")), encoding="utf-8").read()
+        problems += [f"{w!r} missing from the drawing of {spec.splitlines()[0]}" for w in want if w not in body]
+    return problems
+
+
 def import_arrows(tmp):
     """A solid arrow between two files is judged by those files' own imports, wherever a same-named file lives."""
     tree(tmp, {"src/one/a.js": "", "src/b.js": "", "src/c.js": "", "src/d.js": "", "src/two/a.js": "import '../b.js';\nimport '../c.js';\nimport '../d.js';\n"})
@@ -331,6 +342,7 @@ REGRESSIONS = [
     ("names: files with any extension are read", unlisted_extensions),
     ("layout: edges through container titles are counted", container_titles),
     ("layout: decision exits in line across a diamond are counted", inline_exits),
+    ("title and legend drawn for every diagram type", sequence_title_legend),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
     ("deps: Python import statements in any layout", python_import_statements),

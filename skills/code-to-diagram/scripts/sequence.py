@@ -10,6 +10,7 @@ from drawio_lib import Diagram, Html, wrap_lines, text_width
 
 M = 40                  # page margin
 BOX_H = 44
+TITLE_H = 40            # heading above the participants
 STEP = 48               # vertical space one message takes
 CHAR_W = 6.8            # message and note text is 11 px
 
@@ -74,7 +75,8 @@ def build(model):
         cx.append(cx[-1] + g)
 
     # vertical layout ----------------------------------------------------------------------------------------------
-    top = M + BOX_H + 6
+    head_y = M + (TITLE_H if model.title else 0)                  # participant boxes sit below the title
+    top = head_y + BOX_H + 6
     t, ys, note_boxes = top + 20, [], {}
     for k, r in enumerate(rows):
         if r[0] == "msg":
@@ -105,7 +107,7 @@ def build(model):
     cx = [c + shift for c in cx]
 
     for i, (pid, label, actor) in enumerate(parts):
-        d.box(f"seq-hd-{pid}", label, cx[i] - box_w / 2, M, box_w, BOX_H, "rounded", "purple" if actor else "blue")
+        d.box(f"seq-hd-{pid}", label, cx[i] - box_w / 2, head_y, box_w, BOX_H, "rounded", "purple" if actor else "blue")
         d.box(f"seq-ll-{pid}", "", cx[i] - 5, top, 10, height, "rect", "gray", style="dashed=1;")
     for k, fr in enumerate(frames):
         a, b = min(fr["span"], default=0), max(fr["span"], default=len(parts) - 1)
@@ -145,6 +147,8 @@ def build(model):
     right_edge = max([cx[-1] + box_w / 2] + notes_right)
     self_room = max([cx[idx[r[1]]] + 40 + _text_w(r[3]) for r in rows if r[0] == "msg" and r[1] == r[2]], default=0)
     d.width, d.height = max(right_edge, self_room) + M, top + height + M
+    if model.title:
+        d.title(model.title, M, M)
     return d, (d.width, d.height)
 
 

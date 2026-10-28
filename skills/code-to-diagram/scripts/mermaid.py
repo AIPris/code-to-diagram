@@ -64,6 +64,7 @@ class Model:
     classes: dict = field(default_factory=dict)      # class name -> {fill, stroke}
     legend: list = field(default_factory=list)       # [(key, meaning)]
     srcs: list = field(default_factory=list)
+    title: str = ""                                  # `title text` line, drawn as a heading above the diagram
     participants: list = field(default_factory=list) # sequence: [(id, label, actor)]
     items: list = field(default_factory=list)        # sequence: message/note/frame rows in time order
     numbered: bool = False
@@ -117,6 +118,7 @@ def parse(text):
         return m
     model = kinds[first](lines, head[0])
     model.srcs, model.legend = srcs, legend
+    model.title = next((clean(m.group(1)) for m in (re.match(r"\s*title\s*:?\s+(.+)$", l) for l in lines[head[0] + 1:] if not re.search(r"-{2,}|={2,}|-\.", l)) if m), "")
     return model
 
 

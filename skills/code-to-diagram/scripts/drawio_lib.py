@@ -165,6 +165,10 @@ class Diagram:
         self._cell(id, label_text(label), f"{SHAPES[shape]}{look}fontSize={font};{style}", "vertex", parent, dict(x=x, y=y, width=w, height=h))
         return id
 
+    def title(self, text, x, y):
+        """Heading above the diagram."""
+        return self.box("title", Html(f"<b>{html.escape(text)}</b>"), x, y, text_width(text, 9.5) + 20, 28, "text", font=16, style="align=left;")
+
     def container(self, id, title, x, y, w, h, color="gray", parent="1", header=30, fill=None, stroke=None):
         """Swimlane. Children pass parent=<this id> and coordinates RELATIVE to it. Edges stay on parent='1'."""
         f, s = _colors(color, fill, stroke)
