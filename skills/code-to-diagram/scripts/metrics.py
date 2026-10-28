@@ -34,6 +34,7 @@ def _cross(s, t):
 
 JOG = 24        # a middle segment shorter than this (two lanes of 12 px) is a wobble in a line meant to be straight, not a turn
 DETOUR = 40     # a route that travels this far against its own direction (out and back) is a detour, not a path
+INLINE = 8       # ends on opposite sides of one diamond this close in height are one line to the eye
 SHARE = 3       # two parallel runs closer than this look like one line
 
 
@@ -89,9 +90,19 @@ def label_cost(rect, own, lines, solid):
     return cost
 
 
-def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, titles=()):
+def _inline_exits(box, ends):
+    """Pairs of edge ends on opposite sides of a box at one height (or one column): drawn through a diamond they read as one line."""
+    x, y, w, h = box
+    cx, cy = x + w / 2, y + h / 2
+    left, right = [p[1] for p in ends if p[0] < cx - 1], [p[1] for p in ends if p[0] > cx + 1]
+    above, below = [p[0] for p in ends if p[1] < cy - 1], [p[0] for p in ends if p[1] > cy + 1]
+    return sum(abs(a - b) < INLINE for a in left for b in right) + sum(abs(a - b) < INLINE for a in above for b in below)
+
+
+def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, titles=(), diamonds=()):
     """lines {edge idx: polyline}; bundles {edge idx: fan key}: edges of one fan share their trunk on purpose; titles: rectangles
-    (x, y, w, h) of container title text, which no edge may strike through. -> dict(node_hits, title_hits, crossings, label_conflicts, bends, jogs, shared, detour, score)."""
+    (x, y, w, h) of container title text, which no edge may strike through; diamonds: ids of decision nodes, whose edges
+    must not leave on opposite sides at one height (they read as one line through the diamond). -> dict(node_hits, title_hits, crossings, label_conflicts, bends, jogs, shared, detour, score)."""
     hits = struck = 0
     for idx, line in lines.items():
         a, b, _ = edges[idx]
@@ -99,6 +110,8 @@ def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, t
             if n not in (a, b) and any(_through(s, boxes[n]) for s in _segments(line)):
                 hits += 1
         struck += sum(1 for t in titles if any(_through(s, t, 0) for s in _segments(line)))
+    inline = sum(_inline_exits(boxes[n], [p for idx, line in lines.items() for p, end in ((line[0], edges[idx][0]), (line[-1], edges[idx][1])) if end == n])
+                 for n in diamonds)
     segs = [(idx, s) for idx, line in lines.items() for s in _segments(line)]
     crossings = sum(1 for i in range(len(segs)) for j in range(i + 1, len(segs)) if segs[i][0] != segs[j][0] and _cross(segs[i][1], segs[j][1]))
     w, h = size
@@ -113,5 +126,5 @@ def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, t
     same_fan = lambda a, b: bundles.get(a) is not None and bundles.get(a) == bundles.get(b)
     shared = sum(1 for i in range(len(merged)) for j in range(i + 1, len(merged))
                  if merged[i][0] != merged[j][0] and not same_fan(merged[i][0], merged[j][0]) and _runs_overlap(merged[i][1], merged[j][1]))
-    score = 25 * hits + 10 * struck + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared + 2 * detour
-    return dict(node_hits=hits, title_hits=struck, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, detour=detour, score=score)
+    score = 25 * hits + 10 * struck + 6 * inline + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared + 2 * detour
+    return dict(node_hits=hits, title_hits=struck, inline=inline, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, detour=detour, score=score)

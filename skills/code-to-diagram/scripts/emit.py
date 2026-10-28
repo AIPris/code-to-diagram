@@ -119,7 +119,8 @@ def _lay_out(model, direction, gname, edge_text, flatten=False, tidy=False):
     lines = labels.lines_of(plan, res.abs_box, edges)
     spots, touching = labels.place(lines, edges, edge_text, res.abs_box, model.nodes)
     titles = [(x + (w - groups[g]) / 2 + 20, y, groups[g] - 40, HEADER) for g, (x, y, w, _) in ((g, res.abs_box[g]) for g in groups)]    # centred title text
-    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()}, titles)
+    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()}, titles,
+                              [i for i, n in model.nodes.items() if n.shape == "diamond"])
     return res, plan, spots, quality, parent, edges
 
 

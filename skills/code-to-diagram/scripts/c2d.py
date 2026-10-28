@@ -116,6 +116,7 @@ def cmd_build(argv):
     if lr:
         bad = [f"{lr['node_hits']} edge(s) run through a node" if lr["node_hits"] else "",
                f"{lr['title_hits']} edge(s) strike through a container title" if lr["title_hits"] else "",
+               f"{lr['inline']} decision(s) with two edges leaving in line on opposite sides" if lr["inline"] else "",
                f"{lr['crossings']} edge crossings" if lr["crossings"] > 3 else "",
                f"{lr['jogs']} kink(s) (a sideways step under {metrics.JOG} px)" if lr["jogs"] else "",
                f"{lr['detour']} edges go out past their target and back" if lr["detour"] > 2 else "",

@@ -19,6 +19,7 @@ import drawio_lib  # noqa: E402
 import emit  # noqa: E402
 import facts  # noqa: E402
 import mermaid  # noqa: E402
+import metrics  # noqa: E402
 from validate_drawio import validate  # noqa: E402
 
 SAMPLES = {
@@ -211,6 +212,13 @@ def container_titles(tmp):
     return [] if hits == 1 else [f"title_hits {hits}, expected 1"]
 
 
+def inline_exits(tmp):
+    """Two edges leaving a decision on opposite sides at one height are counted; staggered or same-side ends are not."""
+    box = (100, 100, 100, 60)
+    got = [metrics._inline_exits(box, ends) for ends in ([(105, 130), (195, 131)], [(105, 120), (195, 150)], [(105, 130), (110, 131)])]
+    return [] if got == [1, 0, 0] else [f"inline pairs {got}, expected [1, 0, 0]"]
+
+
 def import_arrows(tmp):
     """A solid arrow between two files is judged by those files' own imports, wherever a same-named file lives."""
     tree(tmp, {"src/one/a.js": "", "src/b.js": "", "src/c.js": "", "src/d.js": "", "src/two/a.js": "import '../b.js';\nimport '../c.js';\nimport '../d.js';\n"})
@@ -322,6 +330,7 @@ REGRESSIONS = [
     ("names: whole identifiers and file names only", whole_name_matching),
     ("names: files with any extension are read", unlisted_extensions),
     ("layout: edges through container titles are counted", container_titles),
+    ("layout: decision exits in line across a diamond are counted", inline_exits),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
     ("deps: Python import statements in any layout", python_import_statements),
