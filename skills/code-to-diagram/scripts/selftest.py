@@ -197,7 +197,7 @@ def unlisted_extensions(tmp):
 
 def container_titles(tmp):
     """An edge that enters a container through its title text is counted, not reported as 'no overlaps'."""
-    model = mermaid.parse("flowchart TD
+    model = mermaid.parse("""flowchart TD
  S([start])
  subgraph G [A rather long container title here]
   X[step one]
@@ -205,7 +205,7 @@ def container_titles(tmp):
   X --> Y
  end
  S --> X
-")
+""")
     emit.build(model)
     hits = model.layout_report["title_hits"]
     return [] if hits == 1 else [f"title_hits {hits}, expected 1"]
