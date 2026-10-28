@@ -115,6 +115,7 @@ def cmd_build(argv):
     lr = getattr(model, "layout_report", None)
     if lr:
         bad = [f"{lr['node_hits']} edge(s) run through a node" if lr["node_hits"] else "",
+               f"{lr['title_hits']} edge(s) strike through a container title" if lr["title_hits"] else "",
                f"{lr['crossings']} edge crossings" if lr["crossings"] > 3 else "",
                f"{lr['jogs']} kink(s) (a sideways step under {metrics.JOG} px)" if lr["jogs"] else "",
                f"{lr['detour']} edges go out past their target and back" if lr["detour"] > 2 else "",
@@ -122,7 +123,7 @@ def cmd_build(argv):
                f"{lr['label_conflicts']} label(s) touch a line or node" if lr["label_conflicts"] else ""]
         print(f"layout: {lr['direction']}{' (chosen automatically)' if lr['auto'] else ''}; " + (", ".join(b for b in bad if b) or "no overlaps")
               + f"; {lr['bends']} bends in {ne} edges")
-        if lr["node_hits"] or lr["crossings"] > 12 or lr["label_conflicts"] > 2 or lr["jogs"] > 3 or lr["detour"] > 2 or lr["bends"] > 3 * max(ne, 1):
+        if lr["node_hits"] or lr["title_hits"] or lr["crossings"] > 12 or lr["label_conflicts"] > 2 or lr["jogs"] > 3 or lr["detour"] > 2 or lr["bends"] > 3 * max(ne, 1):
             print("  dense: shorten labels, drop edges to nodes everything uses, group nodes in subgraphs, or split the diagram")
     for line in cap([f"  {m}" for m in errors + warnings]):
         print(line)

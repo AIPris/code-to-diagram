@@ -89,14 +89,16 @@ def label_cost(rect, own, lines, solid):
     return cost
 
 
-def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None):
-    """lines {edge idx: polyline}; bundles {edge idx: fan key}: edges of one fan share their trunk on purpose. -> dict(node_hits, crossings, label_conflicts, bends, jogs, shared, detour, score)."""
-    hits = 0
+def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, titles=()):
+    """lines {edge idx: polyline}; bundles {edge idx: fan key}: edges of one fan share their trunk on purpose; titles: rectangles
+    (x, y, w, h) of container title text, which no edge may strike through. -> dict(node_hits, title_hits, crossings, label_conflicts, bends, jogs, shared, detour, score)."""
+    hits = struck = 0
     for idx, line in lines.items():
         a, b, _ = edges[idx]
         for n in leaves:
             if n not in (a, b) and any(_through(s, boxes[n]) for s in _segments(line)):
                 hits += 1
+        struck += sum(1 for t in titles if any(_through(s, t, 0) for s in _segments(line)))
     segs = [(idx, s) for idx, line in lines.items() for s in _segments(line)]
     crossings = sum(1 for i in range(len(segs)) for j in range(i + 1, len(segs)) if segs[i][0] != segs[j][0] and _cross(segs[i][1], segs[j][1]))
     w, h = size
@@ -111,5 +113,5 @@ def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None):
     same_fan = lambda a, b: bundles.get(a) is not None and bundles.get(a) == bundles.get(b)
     shared = sum(1 for i in range(len(merged)) for j in range(i + 1, len(merged))
                  if merged[i][0] != merged[j][0] and not same_fan(merged[i][0], merged[j][0]) and _runs_overlap(merged[i][1], merged[j][1]))
-    score = 25 * hits + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared + 2 * detour
-    return dict(node_hits=hits, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, detour=detour, score=score)
+    score = 25 * hits + 10 * struck + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared + 2 * detour
+    return dict(node_hits=hits, title_hits=struck, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, detour=detour, score=score)

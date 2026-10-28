@@ -195,6 +195,22 @@ def unlisted_extensions(tmp):
     return problems
 
 
+def container_titles(tmp):
+    """An edge that enters a container through its title text is counted, not reported as 'no overlaps'."""
+    model = mermaid.parse("flowchart TD
+ S([start])
+ subgraph G [A rather long container title here]
+  X[step one]
+  Y{check?}
+  X --> Y
+ end
+ S --> X
+")
+    emit.build(model)
+    hits = model.layout_report["title_hits"]
+    return [] if hits == 1 else [f"title_hits {hits}, expected 1"]
+
+
 def import_arrows(tmp):
     """A solid arrow between two files is judged by those files' own imports, wherever a same-named file lives."""
     tree(tmp, {"src/one/a.js": "", "src/b.js": "", "src/c.js": "", "src/d.js": "", "src/two/a.js": "import '../b.js';\nimport '../c.js';\nimport '../d.js';\n"})
@@ -305,6 +321,7 @@ REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
     ("names: whole identifiers and file names only", whole_name_matching),
     ("names: files with any extension are read", unlisted_extensions),
+    ("layout: edges through container titles are counted", container_titles),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
     ("deps: Python import statements in any layout", python_import_statements),

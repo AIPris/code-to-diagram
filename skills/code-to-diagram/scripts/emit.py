@@ -5,7 +5,7 @@ import sequence
 from drawio_lib import CHAR_W, LINE_H, PALETTE, Diagram, class_height, text_width, wrap_lines
 import labels
 import metrics
-from layout import layout
+from layout import HEADER, layout
 from ports import widen
 from routing import route_edges
 
@@ -118,7 +118,8 @@ def _lay_out(model, direction, gname, edge_text, flatten=False, tidy=False):
                        styles=[edge_style(e) for e in model.edges], tidy=tidy)
     lines = labels.lines_of(plan, res.abs_box, edges)
     spots, touching = labels.place(lines, edges, edge_text, res.abs_box, model.nodes)
-    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()})
+    titles = [(x + (w - groups[g]) / 2 + 20, y, groups[g] - 40, HEADER) for g, (x, y, w, _) in ((g, res.abs_box[g]) for g in groups)]    # centred title text
+    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()}, titles)
     return res, plan, spots, quality, parent, edges
 
 
