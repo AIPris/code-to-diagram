@@ -181,6 +181,20 @@ def whole_name_matching(tmp):
     return problems
 
 
+def unlisted_extensions(tmp):
+    """Any text file is searched for names, whatever its extension; a binary file is reported as not read."""
+    tree(tmp, {"mod.psm1": "function Get-UserThing { param($UserName) }\n", "app.vb": "Sub RunJob_Now()\n"})
+    with open(os.path.join(tmp, "blob.bin"), "wb") as fh:
+        fh.write(bytes([0, 1, 2]))
+    res = facts.check(mermaid.parse('flowchart TB\n A["UserThing"]\n B["RunJob_Now"]\n'), [tmp])
+    problems = []
+    if res[1]:
+        problems.append(f"names in .psm1/.vb files reported missing: {res[1]}")
+    if res[4] != ["blob.bin"]:
+        problems.append(f"skipped files: {res[4]}, expected ['blob.bin']")
+    return problems
+
+
 def import_arrows(tmp):
     """A solid arrow between two files is judged by those files' own imports, wherever a same-named file lives."""
     tree(tmp, {"src/one/a.js": "", "src/b.js": "", "src/c.js": "", "src/d.js": "", "src/two/a.js": "import '../b.js';\nimport '../c.js';\nimport '../d.js';\n"})
@@ -191,6 +205,7 @@ def import_arrows(tmp):
     problems = []
     for name, got, want in (
             ("explicit path, no import behind it", check(f' {one} --> B["src/b.js"]\n A --> C["src/c.js"]\n'), (2, [("A", "B"), ("A", "C")], 0)),
+            ("a single arrow is judged too", check(f' {one} --> B["src/b.js"]\n'), (1, [("A", "B")], 0)),
             ("explicit path, real imports", check(f' {two} --> B["src/b.js"]\n A --> C["src/c.js"]\n'), (2, [], 0)),
             ("bare file name that fits two files", check(' A["a.js"] --> B["b.js"]\n A --> C["c.js"]\n'), (0, [], 2)),
             ("group stands for its members", check(f' subgraph G ["core"]\n  B["src/b.js"]\n  C["src/c.js"]\n end\n {two} --> G\n A --> D["src/d.js"]\n'), (2, [], 0))):
@@ -289,6 +304,7 @@ def python_import_roots(tmp):
 REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
     ("names: whole identifiers and file names only", whole_name_matching),
+    ("names: files with any extension are read", unlisted_extensions),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
     ("deps: Python import statements in any layout", python_import_statements),

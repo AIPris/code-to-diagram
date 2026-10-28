@@ -9,8 +9,6 @@ import posixpath
 import re
 
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", "__pycache__", ".venv", "venv", "coverage", ".next"}
-TEXT_EXT = {".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".py", ".java", ".kt", ".go", ".rs", ".rb", ".php", ".cs", ".c", ".h",
-            ".cpp", ".hpp", ".swift", ".sql", ".json", ".yml", ".yaml", ".toml", ".md", ".html", ".css", ".sh", ".xml", ".proto"}
 CODE_LIKE = re.compile(r"^(?:[a-z]+[A-Z]\w*|[A-Z][a-z0-9]+[A-Z]\w*|\w*_\w*|[A-Z]{4,}\w*|\w+\.(?:js|mjs|ts|tsx|py|json|md|html|css|sql|java|go|rs))$")
 IDENT = re.compile(r"[A-Za-z_][\w]*")
 WORD = re.compile(r"[A-Za-z_][\w.]*[\w]|[A-Za-z_]")
@@ -18,9 +16,16 @@ KEYWORDS = {"PK", "FK", "UK", "static", "void", "null", "true", "false", "NULL",
 MAX_FILE, MAX_TOTAL = 2_000_000, 40_000_000
 
 
+def is_text(f):
+    """A file is source text unless it has a NUL byte near the start (images, archives, binaries)."""
+    with open(f, "rb") as fh:
+        return b"\x00" not in fh.read(8192)
+
+
 def corpus(paths):
-    """One string with the text of every source file plus their relative paths; (string, number of files)."""
-    chunks, total, n = [], 0, 0
+    """One string with the text of every source file plus their relative paths; (string, number of files read, files skipped
+    as binary, too large, or past the size budget)."""
+    chunks, total, n, skipped = [], 0, 0, []
     for p in paths:
         walk = [(os.path.dirname(p), [], [os.path.basename(p)])] if os.path.isfile(p) else os.walk(p)
         for root, dirs, names in walk:
@@ -28,15 +33,16 @@ def corpus(paths):
             for name in names:
                 f = os.path.join(root, name)
                 chunks.append(f.replace("\\", "/"))
-                if os.path.splitext(name)[1].lower() in TEXT_EXT and total < MAX_TOTAL:
-                    try:
-                        if os.path.getsize(f) <= MAX_FILE:
-                            chunks.append(open(f, encoding="utf-8", errors="replace").read())
-                            total += os.path.getsize(f)
-                            n += 1
-                    except OSError:
-                        pass
-    return "\n".join(chunks), n
+                try:
+                    if total < MAX_TOTAL and os.path.getsize(f) <= MAX_FILE and is_text(f):
+                        chunks.append(open(f, encoding="utf-8", errors="replace").read())
+                        total += os.path.getsize(f)
+                        n += 1
+                    else:
+                        skipped.append(name)
+                except OSError:
+                    skipped.append(name)
+    return "\n".join(chunks), n, skipped
 
 
 def claims(model):
@@ -75,8 +81,8 @@ FILE_NAME = re.compile(r"(?:[\w.-]+[/\\])*[\w.-]+\.(?:js|mjs|cjs|jsx|ts|tsx|py)(
 
 def check_edges(model, srcs):
     """Solid arrows between nodes that name source files claim 'imports'. -> (checked, [(from, to)] with no import behind
-    them in either direction, arrows not judged because a name fits several scanned files), or None when fewer than two
-    arrows can be judged and none was skipped. Dashed arrows are not checked.
+    them in either direction, arrows not judged because a name fits several scanned files), or None when no arrow
+    can be judged and none was skipped. Dashed arrows are not checked.
     A name is matched by the end of its path: `src/one/a.js` is that file only; a bare `a.js` is read inside the nearest
     enclosing subgraph titled like a directory (what `deps` draws), and is not judged when it still fits several files."""
     import deps
@@ -138,7 +144,7 @@ def check_edges(model, srcs):
             checked += 1
             if not any(y in graph.get(x, ()) or x in graph.get(y, ()) for x in a for y in b):
                 bad.append((e.src, e.tgt))
-    return (checked, bad, unclear) if checked >= 2 or unclear else None
+    return (checked, bad, unclear) if checked or unclear else None
 
 
 def has_word(text, tok):
@@ -153,11 +159,12 @@ def has_word(text, tok):
 
 
 def check(model, srcs):
-    """-> (checked, missing [(token, where)], files read, source paths that do not exist), or None when no source path exists."""
+    """-> (checked, missing [(token, where)], files read, source paths that do not exist, files skipped), or None when no source
+    path exists."""
     paths = [p for p in srcs if os.path.exists(p)]
     if not paths:
         return None
-    text, n = corpus(paths)
+    text, n, skipped = corpus(paths)
     seen, missing = set(), []
     for tok, where in claims(model):
         if tok in seen:
@@ -165,4 +172,4 @@ def check(model, srcs):
         seen.add(tok)
         if not has_word(text, tok):
             missing.append((tok, where))
-    return len(seen), missing, n, [p for p in srcs if p not in paths]
+    return len(seen), missing, n, [p for p in srcs if p not in paths], skipped

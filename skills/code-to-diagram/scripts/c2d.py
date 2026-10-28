@@ -132,9 +132,11 @@ def cmd_build(argv):
         print("names: NOT CHECKED - " + (f"none of the `%% src:` paths exist from {os.getcwd()}: {' '.join(srcs[:4])} (run build from the source repo's root, or use absolute paths)"
                                          if srcs else "add a `%% src: path ...` line to check labels against the source"))
     else:
-        checked, missing, n_files, absent = res
+        checked, missing, n_files, absent, skipped = res
         if absent:
             print(f"names: note - `%% src:` paths not found, skipped: {' '.join(absent[:4])}")
+        if skipped:
+            print(f"names: note - {len(skipped)} files not read (binary or over the size limit): {' '.join(skipped[:4])}" + (" ..." if len(skipped) > 4 else ""))
         if missing:
             print(f"names: {len(missing)} of {checked} code names NOT FOUND in {n_files} source files (misspelled or invented?)")
             for line in cap([f"  {tok}   (in {where})" for tok, where in missing], 10):
