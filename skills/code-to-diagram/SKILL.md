@@ -11,26 +11,29 @@ You write a short Mermaid spec. One command lays it out, writes the `.drawio` (e
 
 ## Workflow
 
-1. **Scope.** Take the diagram type and the code from the request; ask only if either is truly unclear (unattended: pick the likeliest reading and state it at the end). Draw the smallest slice that answers the question: one flow, one module, the hubs. Past ~25 nodes a diagram stops being readable: group with subgraphs, drop leaves, or split in two.
+1. **Scope.** Take the diagram type and the code from the request; ask only if either is truly unclear (unattended: pick the likeliest reading and state it at the end). Draw the smallest slice that answers the question: one flow, one module, the hubs. What the request names (error paths, all inputs, every outcome) is part of the question and is never cut for size.
+   **Checklist:** before gathering facts, list what the request asks the diagram to show (paths, outcomes, inputs, outputs, error cases), and for each item the `file:line` where the code does it. Fill the list while gathering; an item with no `file:line` is not drawn. Past ~25 nodes a diagram stops being readable: group with subgraphs, drop leaves, or split in two.
 2. **Gather facts cheaply.** Grep/Read only what the diagram will claim (signatures, branches, schema, call order); do not read whole files for what one grep answers. **Imports and module dependencies are not read at all, they are scanned:**
    `python "$SKILL_DIR/scripts/c2d.py" deps <dir-or-file>... [--entry main.js --reach 1] [--exclude text] > diagrams/<slug>/<slug>.mmd`
    (JS/TS/Python; groups by directory, colours hubs and leaves, collapses an entry file that imports most of the rest; `--entry` takes a file name or the end of its path; `--exclude test` leaves out tests and tooling). Edit that file instead of retyping it.
-3. **Write the spec** to `diagrams/<slug>/<slug>.mmd` (kebab-case slug, under the working directory). First lines: `%% src: <files or dirs the facts come from>`, then the diagram.
+3. **Write the spec** (draw every checklist item; an optional `title Text` line is drawn as a heading in every diagram type) to `diagrams/<slug>/<slug>.mmd` (kebab-case slug, under the working directory). First lines: `%% src: <files or dirs the facts come from>`, then the diagram.
 4. **Build:** `python "$SKILL_DIR/scripts/c2d.py" build diagrams/<slug>/<slug>.mmd`
    - `SPEC ERRORS` lists unsupported or malformed lines (nothing is built): fix them, rebuild.
    - `structure` warnings: fix the real ones.
    - `names ... NOT FOUND in source`: a label does not exist in the `%% src:` files; misspelled or invented? Check and correct (a deliberate pseudo-name is fine).
    - `imports: N solid arrows ... have NO import behind them`: those arrows claim an import that the code does not contain; fix them or draw them dashed.
+   - `names: note - N files not read`: binary or very large files were skipped; every other file is searched, whatever its extension.
    - `imports: N solid arrows NOT CHECKED`: a file name in them fits several source files (two `index.js`); write its directory in the label (`src/one/index.js`) to have the arrow checked.
-   - `layout:` is measured, not guessed: edges running through nodes, edge crossings, kinks (a sideways step of under 24 px in a line meant to be straight), detours (several edges that run out past their target and back), two edges drawn on top of each other, labels lying on lines, and the bends of all edges together. `no overlaps` means nothing to fix; a `dense:` hint says what to cut. Many bends per edge or crossings mean too many links between distant nodes: collapse or drop the hub, or group.
-5. **Look once.** Read the PNG named after `png:` (only when it says verified complete; never a PNG from an earlier run). Judge what a script cannot: readable, the layout tells the story. Fix by editing the spec (shorter labels, regroup, change direction, cut nodes) and rebuild; at most two rebuilds, then report what is left. Layout fixes by hand in the XML are overwritten by the next build.
-6. **Report** briefly: the `.drawio`, `.png` and `.mmd` paths, what the diagram shows, what you left out, assumptions.
+   - `layout:` is measured, not guessed: edges running through nodes, edges striking through a container title (shorten the title or move the node it enters), decisions whose two exits line up across the diamond, edge crossings, kinks (a sideways step of under 24 px in a line meant to be straight), detours (several edges that run out past their target and back), two edges drawn on top of each other, labels lying on lines, and the bends of all edges together. `no overlaps` means nothing to fix; a `dense:` hint says what to cut. Many bends per edge or crossings mean too many links between distant nodes: collapse or drop the hub, or group.
+5. **Look once.** Read the PNG named after `png:` (only when it says verified complete; never a PNG from an earlier run). Judge what a script cannot: readable, the layout tells the story. Fix by editing the spec (shorter labels, regroup, change direction, cut nodes) and rebuild; two rebuilds are the default; allow a third when the open issues are known and the spec can fix them. Then report what is left. Layout fixes by hand in the XML are overwritten by the next build.
+6. **Tick off the checklist:** each item is drawn or deliberately left out; name the left-out ones and why in the report.
+7. **Report** briefly: the `.drawio`, `.png` and `.mmd` paths, what the diagram shows, what you left out, assumptions.
 
 ## Spec: the Mermaid subset that is supported
 
 - **flowchart TD|LR** (TD = top-down; state, class and ER diagrams choose top-down or left-to-right themselves unless the spec says `direction LR`). Nodes: `A[text]` box, `A([text])` start/end, `A{text}` decision, `A((text))` circle, `A[(text)]` database, `A[/text/]` I/O, `A(text)`. Edges: `-->`, `---`, `-.->`, `==>`, `-->|label|`, `-- label -->`, `A & B --> C`. `subgraph id [Title]` ... `end` (nestable; an edge may end at a subgraph id). Colour: `classDef name fill:#dae8fc,stroke:#6c8ebf,stroke-width:3px`, `A:::name`, `class A,B name`; the names `blue green red yellow purple gray white` work without classDef.
 - Line break inside a label: `<br/>`. Ids: letters, digits, `_` only. Quote labels that contain brackets, parentheses or `|`: `A["parse(text) | none"]`.
-- Comment directives: `%% src: src/ "my repo/lib.js"` (files or dirs the labels are checked against, quote paths with spaces; always give it), `%% legend: hub=imported by 4+ files; leaf=imports nothing` (class or colour name = meaning, drawn as a legend box; only when colour carries meaning).
+- Comment directives: `%% src: src/ "my repo/lib.js"` (files or dirs the labels are checked against, quote paths with spaces; always give it), `%% legend: hub=imported by 4+ files; leaf=imports nothing` (class or colour name = meaning, drawn as a legend box, in sequence diagrams too; only when colour carries meaning).
 - Not supported, reported by line: click/links, themes/init, concurrent states, namespaces.
 
 The other types, one example each (everything else is standard Mermaid):
