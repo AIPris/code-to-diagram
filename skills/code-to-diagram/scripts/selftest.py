@@ -3,7 +3,7 @@
 
 Builds one small sample of every diagram type, validates the XML, and checks a few properties that earlier versions
 got wrong: edges glued to shapes, labels with "<" survive, no edge or label ends up pointing at a missing shape, and the
-lines come out clean (no kinks, no edges on top of each other, none through a node).
+lines come out clean (no kinks, no edges on top of each other, none through a node or a container title).
 """
 import contextlib
 import io
@@ -197,8 +197,11 @@ def unlisted_extensions(tmp):
 
 
 def container_titles(tmp):
-    """An edge that enters a container through its title text is counted, not reported as 'no overlaps'."""
-    model = mermaid.parse("""flowchart TD
+    """A route through a container's title text is counted; the build then routes edges round titles where that stays straight."""
+    title, beside = (60, 40, 80, 30), (150, 40, 80, 30)
+    seen = metrics.evaluate({0: [(100, 0), (100, 100)]}, {}, [("a", "b", False)], [], 0, (200, 200), None, [title, beside])["title_hits"]
+    problems = [] if seen == 1 else [f"a route through a title: title_hits {seen}, expected 1"]
+    for what, spec in (("an edge entering a container", """flowchart TD
  S([start])
  subgraph G [A rather long container title here]
   X[step one]
@@ -206,10 +209,20 @@ def container_titles(tmp):
   X --> Y
  end
  S --> X
-""")
-    emit.build(model)
-    hits = model.layout_report["title_hits"]
-    return [] if hits == 1 else [f"title_hits {hits}, expected 1"]
+ Y -->|no| Z([done])
+"""), ("a loop on a node of a container", """flowchart LR
+ subgraph G [Group]
+  A[one]
+  B[two]
+ end
+ A --> A
+""")):
+        model = mermaid.parse(spec)
+        emit.build(model)
+        report = model.layout_report
+        if report["title_hits"] or report["detour"] or report["jogs"] > 1:         # the one kink allowed is Y -> Z, beside the diamond
+            problems.append(f"{what}: {report['title_hits']} titles struck, {report['jogs']} kinks, {report['detour']} detours")
+    return problems
 
 
 def inline_exits(tmp):
@@ -340,7 +353,7 @@ REGRESSIONS = [
     ("build: more than ten names missing from the source", many_missing_names),
     ("names: whole identifiers and file names only", whole_name_matching),
     ("names: files with any extension are read", unlisted_extensions),
-    ("layout: edges through container titles are counted", container_titles),
+    ("layout: edges keep clear of container titles, and strikes are counted", container_titles),
     ("layout: decision exits in line across a diamond are counted", inline_exits),
     ("title and legend drawn for every diagram type", sequence_title_legend),
     ("imports: arrows checked against the file they name", import_arrows),
@@ -373,8 +386,8 @@ def main():
                 if len(trunks) != 1:
                     problems.append(f"fan: {len(trunks)} different trunk heights, expected 1")
             report = getattr(model, "layout_report", None)                 # a router change must not bring the wobble back
-            if report and (report["jogs"] > 1 or report["shared"] or report["node_hits"]):          # a step the two nodes' extents leave no room to avoid may remain
-                problems.append(f"layout: {report['jogs']} kinks, {report['shared']} shared runs, {report['node_hits']} edges through nodes")
+            if report and (report["jogs"] > 1 or report["shared"] or report["node_hits"] or report["title_hits"]):          # a step the two nodes' extents leave no room to avoid may remain
+                problems.append(f"layout: {report['jogs']} kinks, {report['shared']} shared runs, {report['node_hits']} edges through nodes, {report['title_hits']} through container titles")
             print(f"{'FAIL' if problems else 'ok  '} {name}: {nv} shapes, {ne} edges" + (f"  {problems[:3]}" if problems else ""))
             failed += bool(problems)
     example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "examples", "import-graph", "import-graph.mmd")

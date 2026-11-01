@@ -118,12 +118,12 @@ def _lay_out(model, direction, gname, edge_text, flatten=False, tidy=False):
     groups = {gname[g]: text_width(grp.label, 8.4) + 40 for g, grp in model.groups.items()}
     label_w = max((text_width(t, 6.6) for t in edge_text if t), default=0)
     res = layout(sizes, parent, groups, edges, direction, label_w=label_w, side_leaves=model.kind in ("flow", "state"), kinds=kinds, flatten=flatten)
+    titles = {g: (x + (w - groups[g]) / 2 + 20, y, groups[g] - 40, HEADER) for g, (x, y, w, _) in ((g, res.abs_box[g]) for g in groups)}    # centred title text
     plan = route_edges(res.abs_box, edges, res.chains_abs, direction, parents=parent, labelled=[bool(t) for t in edge_text], kinds=kinds,
-                       styles=[edge_style(e) for e in model.edges], tidy=tidy)
+                       styles=[edge_style(e) for e in model.edges], tidy=tidy, titles=titles)
     lines = labels.lines_of(plan, res.abs_box, edges)
     spots, touching = labels.place(lines, edges, edge_text, res.abs_box, model.nodes)
-    titles = [(x + (w - groups[g]) / 2 + 20, y, groups[g] - 40, HEADER) for g, (x, y, w, _) in ((g, res.abs_box[g]) for g in groups)]    # centred title text
-    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()}, titles,
+    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()}, list(titles.values()),
                               [i for i, n in model.nodes.items() if n.shape == "diamond"])
     return res, plan, spots, quality, parent, edges
 
@@ -136,7 +136,7 @@ def _graph(model):
     flats = (False, True) if len(model.nodes) <= STRAIGHTEN_MAX else (False,)         # a huge graph takes too long to lay out twice more
     runs = [(_lay_out(model, d, gname, edge_text, flat), d, flat) for d in tried for flat in flats]     # the layout that measures best wins
     best, direction, flat = min(runs, key=lambda r: r[0][3]["score"])
-    if best[3]["crossings"] or best[3]["shared"]:                                  # only the winner is worth the slower search for better routes
+    if best[3]["crossings"] or best[3]["shared"] or best[3]["title_hits"]:         # only the winner is worth the slower search for better routes
         again = _lay_out(model, direction, gname, edge_text, flat, tidy=True)
         best = min(best, again, key=lambda r: r[3]["score"])
     res, plan, spots, quality, parent, edges = best
