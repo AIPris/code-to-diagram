@@ -19,6 +19,7 @@ CANDIDATES = [
     "/usr/bin/drawio", "/usr/local/bin/drawio", "/snap/bin/drawio", "/opt/drawio/drawio",
 ]
 TOO_BIG = 7500      # the image API rejects sides over 8000 px
+SHARP = 1500        # longest side up to which the text of a PNG stays legible when the image is shown fitted to a screen
 
 
 def find_drawio():
@@ -43,7 +44,7 @@ def png_dims(path):
 def choose_scale(width, height):
     """Scale that keeps small labels legible without an unreadably large image: 2x up to ~1500 px, then 1x, then less."""
     longest = max(width, height)
-    return 2 if longest <= 1500 else 1 if longest <= 3200 else 0.75
+    return 2 if longest <= SHARP else 1 if longest <= 3200 else 0.75
 
 
 def render(drawio, png, scale=2):

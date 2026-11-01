@@ -175,4 +175,5 @@ def _graph(model):
     if model.legend:
         top += legend(d, model, M, top) + M
     d.width, d.height = W + 2 * M, top
+    model.layout_report["fill"] = metrics.fill([res.abs_box[i] for i in model.nodes], (d.width, d.height))      # nodes only: the room inside a container is empty room too
     return d, (W + 2 * M, top)

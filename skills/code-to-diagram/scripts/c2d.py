@@ -83,6 +83,20 @@ def cap(lines, n=SHOW):
     return lines[:n] + ([f"  ... +{len(lines) - n} more"] if len(lines) > n else [])
 
 
+def strip_hint(model, w, h):
+    """What to change when the canvas is a strip (metrics.STRIP) long enough to be scaled down to fit a screen; '' otherwise.
+    A short strip (a chain of three nodes) stays legible as it is."""
+    if metrics.ratio(w, h) <= metrics.STRIP or max(w, h) <= render.SHARP:
+        return ""
+    wide = w >= h
+    if model.kind == "sequence":
+        fix = "drop participants or messages, or split the diagram by phase"
+    else:
+        along = getattr(model, "layout_report", {}).get("direction") in ("LR", "RL")      # the flow runs along the long side
+        fix = (f"switch to {'TD' if wide else 'LR'}, " if along == wide else "") + "group nodes in subgraphs, drop leaf nodes, or split the diagram"
+    return f"{metrics.aspect_text(w, h)} is a {'wide' if wide else 'tall'} strip, its text shrinks when the image is fitted to a screen; {fix}"
+
+
 def cmd_build(argv):
     args = [a for a in argv if not a.startswith("--")]
     scale = float(argv[argv.index("--scale") + 1]) if "--scale" in argv else 0
@@ -105,14 +119,15 @@ def cmd_build(argv):
     kept = archive(base, diagram.xml(), "--archive" in argv)
     diagram.save(base + ".drawio")
     errors, warnings, nv, ne = validate(base + ".drawio")
+    lr = getattr(model, "layout_report", None)
     print(f"built {base}.drawio  [{model.kind}: {len(model.nodes) or len(model.participants)} "
           f"{'participants' if model.kind == 'sequence' else 'nodes'}, "
           f"{ne if model.kind != 'sequence' else sum(1 for i in model.items if i[0] == 'msg')} "
-          f"{'edges' if model.kind != 'sequence' else 'messages'}, {len(model.groups)} groups; {int(w)}x{int(h)} px]")
+          f"{'edges' if model.kind != 'sequence' else 'messages'}, {len(model.groups)} groups; {int(w)}x{int(h)} px, "
+          f"{metrics.aspect_text(w, h)}" + (f", nodes cover {lr['fill']:.0%}" if lr else "") + "]")
     if kept:
         print(f"previous version kept as {kept}.*")
     print(f"structure: {'FAIL' if errors else 'ok'} ({len(errors)} errors, {len(warnings)} warnings)")
-    lr = getattr(model, "layout_report", None)
     if lr:
         bad = [f"{lr['node_hits']} edge(s) run through a node" if lr["node_hits"] else "",
                f"{lr['title_hits']} edge(s) strike through a container title" if lr["title_hits"] else "",
@@ -158,6 +173,9 @@ def cmd_build(argv):
                 print(f"imports: {unclear} solid arrows NOT CHECKED - a file name in them fits several source files; write its directory in the label (src/one/a.js)")
     if max(w, h) > 3500:
         print(f"size: {int(w)}x{int(h)} px is too large to read in one image; drop leaf nodes, wrap groups or split the diagram")
+    hint = strip_hint(model, w, h)
+    if hint:
+        print(f"shape: {hint}")
     if "--no-png" not in argv:
         dims, why = render.render(base + ".drawio", base + ".png", scale or render.choose_scale(w, h))
         print(f"png: {base}.png ({dims[0]}x{dims[1]}, verified complete)" if dims else f"png: NOT CREATED - {why}")
