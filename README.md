@@ -49,7 +49,8 @@ what the diagram should say), and deterministic scripts do the rest:
   container's title, get a second route (other sides, free ports) when that measures better. Several layouts are
   tried and measured, and the best one is kept. What the build reports: edges running through nodes or container
   titles, crossings, kinks, detours, edges drawn on top of each other, bends and labels lying on lines, with a hint
-  on what to cut.
+  on what to cut; and the picture's aspect ratio and how much of it the nodes cover, with a hint when it is a long
+  strip (over 2.5:1 and 1500 px) whose text would shrink to nothing.
 - **Genuinely editable.** The `.drawio` is plain uncompressed XML. Edges are glued to their shapes (move a box and
   the arrows follow) and groups are real containers, so you can keep working in draw.io, diagrams.net or the VS Code
   draw.io extension.
@@ -244,7 +245,7 @@ flowchart TD
 | `mermaid.py` | Parses the supported Mermaid subset and reports unsupported lines by number |
 | `layout.py` | Layered layout: ranks, node order, coordinates (with a pass that lets linked nodes overlap enough for straight lines), container sizes, lanes for long edges |
 | `routing.py`, `ports.py`, `reroute.py` | Edge routing: sides, ports that line up, fan trunks, tracks between ranks, second routes around nodes, container titles and past crossings |
-| `metrics.py` | The layout measurements: crossings, bends, kinks, detours, overlaps |
+| `metrics.py` | The layout measurements: crossings, bends, kinks, detours, overlaps, aspect ratio, fill |
 | `sequence.py`, `emit.py`, `labels.py`, `drawio_lib.py` | Turn the model into draw.io XML |
 | `validate_drawio.py` | Structural checks: glued edges, overlaps, clipped rows, label escaping |
 | `facts.py`, `deps.py` | Name and import checks against the source, and the import scanner |

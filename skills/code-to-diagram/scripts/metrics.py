@@ -36,6 +36,23 @@ JOG = 24        # a middle segment shorter than this (two lanes of 12 px) is a w
 DETOUR = 40     # a route that travels this far against its own direction (out and back) is a detour, not a path
 INLINE = 8       # ends on opposite sides of one diamond this close in height are one line to the eye
 SHARE = 3       # two parallel runs closer than this look like one line
+STRIP = 2.5     # a canvas whose long side is more than this many times its short side is a strip: fitted to a screen its text shrinks
+
+
+def ratio(w, h):
+    """Long side over short side of a canvas, to one decimal: 1.0 for a square, 3.4 for 3381x1001, wide or tall alike."""
+    return round(max(w, h) / max(min(w, h), 1), 1)
+
+
+def aspect_text(w, h):
+    """The proportions of a canvas as W:H, with the short side as 1: '3.4:1' for a wide one, '1:2.8' for a tall one."""
+    r = ratio(w, h)
+    return f"{r}:1" if w >= h else f"1:{r}"
+
+
+def fill(boxes, size):
+    """Share of a canvas (w, h) that boxes (x, y, w, h), which must not overlap, cover: 0.1 means nine tenths of the picture is empty."""
+    return sum(bw * bh for _, _, bw, bh in boxes) / max(size[0] * size[1], 1)
 
 
 def _corners(line):

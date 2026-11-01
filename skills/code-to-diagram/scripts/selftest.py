@@ -373,6 +373,53 @@ def sequence_title_legend(tmp):
     return problems
 
 
+def canvas_proportions(tmp):
+    """The build line gives the aspect ratio and the share of the canvas the nodes cover; a strip long enough to be scaled down gets a hint
+    naming a fix that fits it, and a short strip or an ordinary proportion gets none."""
+    problems = []
+    got = (metrics.ratio(3381, 1001), metrics.aspect_text(3381, 1001), metrics.aspect_text(1001, 3381), metrics.aspect_text(100, 100),
+           metrics.fill([(0, 0, 100, 50), (200, 0, 100, 50)], (400, 100)))
+    if got != (3.4, "3.4:1", "1:3.4", "1.0:1", 0.25):
+        problems.append(f"ratio, aspect_text and fill give {got}")
+    chain = lambda direction, n: f"flowchart {direction}\n" + "".join(f" N{i} --> N{i + 1}\n" for i in range(n))
+    cases = (("a long chain left to right", chain("LR", 12), "wide strip", "switch to TD"),
+             ("a long chain top-down", chain("TD", 16), "tall strip", "switch to LR"),
+             ("a wide fan top-down", "flowchart TD\n" + "".join(f" hub --> n{i}\n" for i in range(14)), "wide strip", "group nodes in subgraphs"),
+             ("a sequence of ten participants", "sequenceDiagram\n" + "".join(f" participant P{i}\n" for i in range(10)) + " P0->>P9: hi\n", "wide strip", "drop participants"),
+             ("two nodes, 2.8:1 but small", chain("LR", 1), None, None),
+             ("an ordinary proportion", SAMPLES["calls"], None, None))
+    for k, (what, spec, strip, fix) in enumerate(cases):
+        (mmd,) = tree(tmp, {f"case{k}/x.mmd": spec})
+        model = mermaid.parse(spec)
+        _, (w, h) = emit.build(model)
+        text, _ = build_output(mmd)
+        if f"{int(w)}x{int(h)} px, {metrics.aspect_text(w, h)}" not in text:
+            problems.append(f"{what}: the built line lacks {int(w)}x{int(h)} px, {metrics.aspect_text(w, h)}")
+        found = re.search(r"^shape: (.*)$", text, re.M)
+        hint = found.group(1) if found else None
+        if strip is None and hint is not None:
+            problems.append(f"{what}: unexpected hint {hint!r}")
+        elif strip is not None and not (hint and strip in hint and fix in hint):
+            problems.append(f"{what}: hint {hint!r}, expected one with {strip!r} and {fix!r}")
+        if ("nodes cover" in text) != (model.kind != "sequence"):
+            problems.append(f"{what}: the share of the canvas the nodes cover is {'missing from' if model.kind != 'sequence' else 'reported for'} the built line")
+    two = mermaid.parse(chain("LR", 1))                                                  # the share is the drawn nodes' area over the drawn canvas
+    diagram, (w, h) = emit.build(two)
+    cells = ET.parse(diagram.save(os.path.join(tmp, "two.drawio"))).getroot().iter("mxGeometry")
+    area = sum(float(g.get("width")) * float(g.get("height")) for g in cells if g.get("width")) / (w * h)
+    if abs(two.layout_report["fill"] - area) > 1e-6:
+        problems.append(f"two nodes: fill {two.layout_report['fill']:.4f}, the drawing has {area:.4f}")
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "examples")
+    for name in ("import-graph", "build-pipeline"):                                      # shipped examples read well: no hint
+        path = os.path.join(root, name, name + ".mmd")
+        if os.path.exists(path):
+            model = mermaid.parse(c2d.read_spec(path))
+            _, (w, h) = emit.build(model)
+            if c2d.strip_hint(model, w, h):
+                problems.append(f"examples/{name}: {c2d.strip_hint(model, w, h)}")
+    return problems
+
+
 def import_arrows(tmp):
     """A solid arrow between two files is judged by those files' own imports, wherever a same-named file lives."""
     tree(tmp, {"src/one/a.js": "", "src/b.js": "", "src/c.js": "", "src/d.js": "", "src/two/a.js": "import '../b.js';\nimport '../c.js';\nimport '../d.js';\n"})
@@ -488,6 +535,7 @@ REGRESSIONS = [
     ("layout: edges attach to a decision at its vertices, arrivals apart from departures", decision_vertices),
     ("layout: edges sharing a decision's vertex fan out from it without counting as drawn on top of each other", vertex_fans),
     ("title and legend drawn for every diagram type", sequence_title_legend),
+    ("build: aspect ratio and fill reported, a hint for a long strip", canvas_proportions),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
     ("deps: Python import statements in any layout", python_import_statements),
