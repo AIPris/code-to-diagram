@@ -70,6 +70,12 @@ def backtrack(line):
     return total
 
 
+def titles_struck(line, titles):
+    """How many of the title rectangles (x, y, w, h) does a route strike through?"""
+    segs = _segments(line)
+    return sum(1 for t in titles if any(_through(s, t, 0) for s in segs))
+
+
 def _runs_overlap(s, t):
     """Do two parallel axis-aligned segments of different edges lie on top of each other for more than a few px?"""
     (a1, b1), (a2, b2) = s
@@ -109,7 +115,7 @@ def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, t
         for n in leaves:
             if n not in (a, b) and any(_through(s, boxes[n]) for s in _segments(line)):
                 hits += 1
-        struck += sum(1 for t in titles if any(_through(s, t, 0) for s in _segments(line)))
+        struck += titles_struck(line, titles)
     inline = sum(_inline_exits(boxes[n], [p for idx, line in lines.items() for p, end in ((line[0], edges[idx][0]), (line[-1], edges[idx][1])) if end == n])
                  for n in diamonds)
     segs = [(idx, s) for idx, line in lines.items() for s in _segments(line)]

@@ -4,12 +4,13 @@ draw.io routes an unpinned orthogonal edge by looking only at its two ends, so a
 can run straight through a third node. For every edge whose route (as routing.route_edges and labels.polyline know it)
 hits a node, search a grid built from the nodes' own edges for the cheapest orthogonal path that stays clear of all of
 them (length plus a penalty per bend) and pin it with waypoints. Edges that are already clear are left alone, so moving
-a shape in draw.io still re-routes them.
+a shape in draw.io still re-routes them. An edge that strikes through a container's title text gets a new route too, by
+the same search, on other sides or ports of its nodes (untangle).
 """
 import heapq
 
 from labels import polyline
-from metrics import SHARE, _corners, _cross, _runs_overlap, _segments, _through
+from metrics import DETOUR, SHARE, _corners, _cross, _runs_overlap, _segments, _through, backtrack, bends_and_jogs, titles_struck
 from ports import NEAR, PITCH, _usable, fraction
 
 CLEAR = 6          # distance kept from every node the edge does not belong to
@@ -178,6 +179,7 @@ TANGLE_EDGES = 80        # a diagram with more edges is left as it is: the searc
 TANGLE_TRIES = 12        # edges given a second route, the most tangled first
 TANGLE_STATES = 40000    # states all the searches of one diagram may expand together, and one search at most:
 TANGLE_ONE = 2500        # what bounds the time this takes (a search that hits its limit is dropped)
+TITLE_STRIKE = 6         # bends that a route through a container title is worth: a few bends to get round it, but no kink or detour
 SIDES = "tblr"
 
 
@@ -192,10 +194,12 @@ def _free_port(box, side, kind, tb, taken, want=None):
     return None
 
 
-def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True):
+def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True, titles=None):
     """Rip up and reroute: an edge that crosses other edges, or runs along one, gets a new route found with a penalty for
     both, and keeps it only if the diagram measures better (a crossing counts as much as four bends). It is also tried
     on other sides of its two nodes, at a free port: with the ports where they are, a crossing is often unavoidable.
+    Then the same for an edge that strikes through the title text of a container (titles {container id: (x, y, w, h)}):
+    its new route keeps clear of every title, and replaces the old one only if it adds no kink and no detour.
     Edges of a fan keep the trunk they share."""
     if len(edges) > TANGLE_EDGES:
         return
@@ -204,6 +208,8 @@ def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True):
     live = [i for i, (a, b, _) in enumerate(edges) if a != b and "exit" in plan[i]]
     lines = {i: polyline(plan[i], boxes[edges[i][0]], boxes[edges[i][1]]) for i in live}
     fan = lambda i: plan[i].get("bundle")
+    titles = titles or {}
+    rects = lambda i: [r for g, r in titles.items() if g not in edges[i][:2]]     # the title text an edge must not strike (its own ends excepted)
 
     def apart(i):
         return {j: l for j, l in lines.items() if j != i and not (fan(i) and fan(i) == fan(j))}
@@ -212,8 +218,12 @@ def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True):
         others = [_segments(_corners(l)) for l in apart(i).values()]
         return sum(1 for s in _segments(_corners(line)) for segs in others for t in segs if _cross(s, t) or _runs_overlap(s, t))
 
-    def worth(i, line):
-        return 4 * tangles(i, line) + max(len(_corners(line)) - 2, 0)
+    def worth(i, line, avoid):
+        return 4 * tangles(i, line) + max(len(_corners(line)) - 2, 0) + TITLE_STRIKE * titles_struck(line, avoid)
+
+    def smooth(line, old):
+        """Does a route that gets round a title stay as straight as the one it replaces: no more kinks, no new detour?"""
+        return bends_and_jogs(line)[1] <= bends_and_jogs(old)[1] and backtrack(line) <= max(backtrack(old), DETOUR - 1)
 
     def taken(node, side, skip_edge):
         out = []
@@ -230,13 +240,13 @@ def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True):
         f = fraction(pos, boxes[node], side, kinds.get(node), tb)
         return {"t": (f, 0), "b": (f, 1), "l": (0, f), "r": (1, f)}[side], {"t": (pos, y), "b": (pos, y + h), "l": (x, pos), "r": (x + w, pos)}[side]
 
-    worst = sorted((i for i in live if not fan(i) and tangles(i, lines[i])), key=lambda i: -tangles(i, lines[i]))
-    for i in worst[:TANGLE_TRIES]:
+    def retry(i, avoid):
+        """Look for a better route for edge i, one that keeps clear of the title rectangles `avoid`."""
         a, b, _ = edges[i]
         p = plan[i]
-        others = [v for k, v in solid.items() if k not in skip(a, b)]
+        others = [v for k, v in solid.items() if k not in skip(a, b)] + avoid
         apart_lines = list(apart(i).values())
-        best = (worth(i, lines[i]), None)
+        best = (worth(i, lines[i], avoid), None)
         now = (side_of(p["exit"]), side_of(p["entry"]))
         ca, cb = (boxes[a][0] + boxes[a][2] / 2, boxes[a][1] + boxes[a][3] / 2), (boxes[b][0] + boxes[b][2] / 2, boxes[b][1] + boxes[b][3] / 2)
 
@@ -280,9 +290,17 @@ def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True):
             path = _simplify([pa[1]] + path + [pb[1]])[1:-1]
             trial = dict(p, points=path, exit=pa[0], exit_at=pa[1], entry=pb[0], entry_at=pb[1])
             line = polyline(trial, boxes[a], boxes[b])
-            score = worth(i, line)
-            if score < best[0] and clear(line, others) and not _enters(line, boxes[a], boxes[b]):
+            score = worth(i, line, avoid)
+            if score < best[0] and clear(line, others) and not _enters(line, boxes[a], boxes[b]) and (not avoid or smooth(line, lines[i])):
                 best = (score, (trial, line))
         if best[1]:
             plan[i].update({k: v for k, v in best[1][0].items() if k in ("points", "exit", "exit_at", "entry", "entry_at")})
             lines[i] = best[1][1]
+
+    worst = sorted((i for i in live if not fan(i) and tangles(i, lines[i])), key=lambda i: -tangles(i, lines[i]))
+    for i in worst[:TANGLE_TRIES]:
+        retry(i, [])
+    struck = [i for i in live if not fan(i) and titles_struck(lines[i], rects(i))]
+    for i in struck[:TANGLE_TRIES]:
+        meter[0] = 0                                                     # every edge round a title has the whole budget
+        retry(i, rects(i))

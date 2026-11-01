@@ -335,13 +335,14 @@ def _tracks(plan, B, edges, labelled, solid, skip):
         p["points"] += route()
 
 
-def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=None, kinds=None, styles=None, tidy=False):
+def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=None, kinds=None, styles=None, tidy=False, titles=None):
     """For every edge (src, tgt, rev): {exit, entry: (fx, fy) anchor fractions, points: absolute waypoints}.
     Ends that share a node side are spread along it (ports.assign) and line up with the end they connect to, so edges run straight.
     parents {id: container id}: containers other than an edge's own ancestors count as obstacles, like nodes.
     labelled: per edge, does it carry a label. kinds {node: shape kind}: where on its sides an edge can attach (ports.half).
     styles: per edge, whatever makes it look different (line, arrowheads): only edges that look alike share a trunk.
-    tidy: also give edges that cross others a second route (reroute.untangle), which takes longer."""
+    tidy: also give edges that cross others, or strike through a container title, a second route (reroute.untangle), which takes longer.
+    titles {container id: (x, y, w, h)}: the title text of each container, which self-loops and those second routes keep clear of."""
     tb = direction in ("TB", "TD", "BT")
     flip = (lambda b: b) if tb else (lambda b: (b[1], b[0], b[3], b[2]))
     pt = (lambda p: p) if tb else (lambda p: (p[1], p[0]))
@@ -358,13 +359,14 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
         return out
 
     solid = B
+    titles = {g: flip(r) for g, r in (titles or {}).items()}
     labelled = labelled or [False] * len(edges)
     styles = styles or [None] * len(edges)
     plan, info, ends = {}, {}, defaultdict(list)
     for idx, (a, b, _) in enumerate(edges):
         s, t = B[a], B[b]
         if a == b:
-            plan[idx] = _loop(s, [v for k, v in solid.items() if k not in skip(a, a)])
+            plan[idx] = _loop(s, [v for k, v in solid.items() if k not in skip(a, a)] + [r for g, r in titles.items() if g != a])
             continue
         pts = [pt(p) for p in chains.get(idx, [])]
         st = _stations(pts)
@@ -399,7 +401,7 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
     _tracks(plan, B, edges, labelled, solid, skip)
     reroute_fix(plan, B, edges, solid, skip)
     if tidy:
-        untangle(plan, B, edges, solid, skip, kinds, tb)
+        untangle(plan, B, edges, solid, skip, kinds, tb, titles)
     if not tb:
         for p in plan.values():
             for k in ("exit", "entry"):
