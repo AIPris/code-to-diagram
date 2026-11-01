@@ -43,7 +43,8 @@ what the diagram should say), and deterministic scripts do the rest:
 - **Mermaid in, draw.io out.** The agent never writes XML or coordinates. A 30-node diagram is a few lines of spec
   instead of thousands of output tokens.
 - **Automatic layered layout with straight lines.** Ranks, node order, container sizes and a lane for every long edge
-  are computed for you. Ports line up so that edges run straight, a node with many outgoing links draws a tree (one
+  are computed for you. Ports line up so that edges run straight (a decision takes its edges at its four corners
+  and edges that share one fan out after it), a node with many outgoing links draws a tree (one
   stem, one shared trunk) instead of a comb of parallel lines, and edges that cross others, or strike through a
   container's title, get a second route (other sides, free ports) when that measures better. Several layouts are
   tried and measured, and the best one is kept. What the build reports: edges running through nodes or container
