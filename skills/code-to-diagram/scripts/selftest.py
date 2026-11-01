@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import c2d  # noqa: E402
@@ -226,10 +227,139 @@ def container_titles(tmp):
 
 
 def inline_exits(tmp):
-    """Two edges leaving a decision on opposite sides at one height are counted; staggered or same-side ends are not."""
+    """Two exits of a decision on opposite sides at one height are counted; staggered or same-side exits are not."""
     box = (100, 100, 100, 60)
-    got = [metrics._inline_exits(box, ends) for ends in ([(105, 130), (195, 131)], [(105, 120), (195, 150)], [(105, 130), (110, 131)])]
-    return [] if got == [1, 0, 0] else [f"inline pairs {got}, expected [1, 0, 0]"]
+    got = [metrics._inline_exits(box, exits) for exits in ([(105, 130), (195, 131)], [(105, 120), (195, 150)], [(105, 130), (110, 131)], [(150, 100), (150, 160)])]
+    problems = [] if got == [1, 0, 0, 1] else [f"inline pairs {got}, expected [1, 0, 0, 1]"]
+    chain = {0: [(150, 0), (150, 100)], 1: [(150, 160), (150, 260)]}                # in at the top, out at the bottom: the ordinary way through a decision
+    through = metrics.evaluate(chain, {"d": box}, [("a", "d", False), ("d", "b", False)], [], 0, (300, 300), None, (), ["d"])["inline"]
+    return problems + ([] if through == 0 else [f"a decision with one entry and one exit in line: inline {through}, expected 0"])
+
+
+DECISIONS = {
+    "an edge leaving a decision inside a container": """flowchart TD
+ S([start])
+ subgraph G [A rather long container title here]
+  X[step one]
+  Y{check?}
+  X --> Y
+ end
+ S --> X
+ Y -->|no| Z([done])
+""",
+    "three exits": """flowchart TD
+ A[Review] --> B{Decision}
+ B -->|approved| C[Ship]
+ B -->|aborted| D[Cancel]
+ B -->|retry| E[Again]
+""",
+    "four exits": """flowchart TD
+ A[Review] --> B{Decision}
+ B -->|a| C[One]
+ B -->|b| D[Two]
+ B -->|c| E[Three]
+ B -->|d| F[Four]
+""",
+    "three entries": """flowchart TD
+ A[x] --> D{d}
+ B[y] --> D
+ C[z] --> D
+ D -->|yes| E[e]
+ D -->|no| F[f]
+""",
+    "a retry loop with a third exit": """flowchart TD
+ A[start] --> B[work]
+ B --> C{ok?}
+ C -->|yes| D[done]
+ C -->|no| B
+ C -->|abort| E([stop])
+""",
+    "decisions in a chain": """flowchart TD
+ A([in]) --> B{one?}
+ B -->|yes| C{two?}
+ B -->|no| X([x])
+ C -->|yes| D{three?}
+ C -->|no| Y([y])
+ D -->|yes| Z([z])
+ D -->|no| W([w])
+""",
+    "loops round decisions, left to right": """flowchart LR
+ A[read] --> B{valid?}
+ B -->|yes| C[save]
+ B -->|no| D[log]
+ D --> A
+ C --> E{more?}
+ E -->|yes| A
+ E -->|no| F([end])
+""",
+}
+RETRY = """flowchart {}
+ A[start] --> B[work]
+ B --> C{{ok?}}
+ C -->|yes| D[done]
+ C -->|no| B
+"""
+LOOP = """flowchart {}
+ A[a] --> B{{again?}}
+ B -->|loop| B
+ B -->|done| C[c]
+"""
+ARRIVAL = {"TD": (0.5, 0), "BT": (0.5, 1), "LR": (0, 0.5), "RL": (1, 0.5)}      # where the way in meets a decision, whichever way the flow runs
+for _d in ARRIVAL:
+    DECISIONS[f"a retry loop, {_d}"] = RETRY.format(_d)
+    DECISIONS[f"a loop on a decision, {_d}"] = LOOP.format(_d)
+VERTICES = {(0.5, 0), (0.5, 1), (0, 0.5), (1, 0.5)}
+
+
+def decision_anchors(tmp, spec):
+    """-> ([(decision id, 'exit'|'entry', (fx, fy))], layout report): where every edge attaches to a decision in the drawing of a spec."""
+    model = mermaid.parse(spec)
+    diagram, _ = emit.build(model)
+    cells = list(ET.parse(diagram.save(os.path.join(tmp, "decisions.drawio"))).getroot().iter("mxCell"))
+    diamonds = {c.get("id") for c in cells if c.get("vertex") and "rhombus" in c.get("style", "")}
+    out = []
+    for c in cells:
+        if not c.get("edge"):
+            continue
+        style = dict(kv.split("=", 1) for kv in c.get("style", "").split(";") if "=" in kv)
+        for end, node in (("exit", c.get("source")), ("entry", c.get("target"))):
+            if node in diamonds:
+                out.append((node, end, (round(float(style[end + "X"]), 3), round(float(style[end + "Y"]), 3))))
+    return out, model.layout_report
+
+
+def vertex_fans(tmp):
+    """Edges leaving one vertex of a decision share its stub on purpose and fan out after it; an arrival lying on top of a departure is not that."""
+    box = (100, 100, 100, 60)
+    fan = {0: [(150, 160), (150, 200), (250, 200), (250, 260)], 1: [(150, 160), (150, 230), (60, 230), (60, 260)]}
+    clash = {0: [(150, 160), (150, 260)], 1: [(150, 300), (150, 160)]}
+    got = [metrics.evaluate(lines, {"d": box}, edges, [], 0, (400, 400), None, (), ["d"])["shared"]
+           for lines, edges in ((fan, [("d", "a", False), ("d", "b", False)]), (clash, [("d", "a", False), ("c", "d", False)]))]
+    plain = metrics.evaluate(fan, {"d": box}, [("d", "a", False), ("d", "b", False)], [], 0, (400, 400))["shared"]       # no decision: the same lines are two edges on top of each other
+    return [] if got == [0, 1] and plain == 1 else [f"shared runs: fan {got[0]}, arrival on a departure {got[1]}, fan at a plain node {plain}; expected 0, 1, 1"]
+
+
+def decision_vertices(tmp):
+    """An edge attaches to a decision at one of its four vertices, never part-way along a side; no vertex serves both an arrival and a departure
+    (the two would read as one line through the corner); and such a decision leaves no exits in line, edges on top of each other, or edges through nodes."""
+    problems = []
+    for what, spec in DECISIONS.items():
+        anchors, report = decision_anchors(tmp, spec)
+        bad = {k: report[k] for k in ("inline", "shared", "node_hits") if report[k]}      # a fan out from a vertex is not a run on top of another
+        if bad:
+            problems.append(f"{what}: {bad}")
+        off = sorted({a for _, _, a in anchors} - VERTICES)
+        if off:
+            problems.append(f"{what}: anchors off the vertices {off}")
+        sides = {}
+        for node, end, a in anchors:
+            sides.setdefault((node, a), set()).add(end)
+        mixed = sorted(k for k, ends in sides.items() if len(ends) > 1)
+        if mixed:
+            problems.append(f"{what}: an arrival and a departure share a vertex {mixed}")
+        if what.startswith("a retry loop,") and sides.get(("C", ARRIVAL[what[-2:]])) != {"entry"}:        # the way in keeps its vertex, the way back leaves by a side
+            problems.append(f"{what}: the vertex the flow arrives at serves {sides.get(('C', ARRIVAL[what[-2:]]))}, expected only the arrival")
+    return problems
 
 
 def sequence_title_legend(tmp):
@@ -355,6 +485,8 @@ REGRESSIONS = [
     ("names: files with any extension are read", unlisted_extensions),
     ("layout: edges keep clear of container titles, and strikes are counted", container_titles),
     ("layout: decision exits in line across a diamond are counted", inline_exits),
+    ("layout: edges attach to a decision at its vertices, arrivals apart from departures", decision_vertices),
+    ("layout: edges sharing a decision's vertex fan out from it without counting as drawn on top of each other", vertex_fans),
     ("title and legend drawn for every diagram type", sequence_title_legend),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),

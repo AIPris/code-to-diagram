@@ -65,36 +65,46 @@ def _sideways(box, x, y_far, others, leaving):
 
 
 SIDE_GAP = 24      # column of an edge that leaves a node through a side vertex, beside the node
-FEW = {"diamond", "ellipse", "note"}      # shapes with room for a port or two per side
+FEW = {"diamond", "ellipse", "note"}      # shapes with little or no room for ports along a side
 
 
-def _unshare(info, edges, B, few):
-    """A diamond, a circle or a note has room for a port or two per side. Where several edges meet at its top or
-    bottom they would crowd together. The edge nearest to straight keeps the side, arrivals give way before
-    departures; the others use the side vertex facing their other end, through a short column beside the node (a
-    station of their own), when that way is free."""
-    groups = defaultdict(list)
+def _unshare(info, edges, B, kinds, up=False):
+    """A circle or a note has room for a port or two per side. Where several edges meet at its top or bottom they would
+    crowd together. The edge nearest to straight keeps the side, arrivals give way before departures; the others use
+    the side vertex facing their other end, through a short column beside the node (a station of their own), when
+    that way is free.
+    A diamond has no room along a side, only its four vertices: edges of one kind (several departures, or several
+    arrivals) share a vertex and fan out after it. What must not share is a departure with an arrival. The flow
+    arrives at the top of a decision and leaves at its bottom (the other way round when `up`: the layout runs
+    bottom-up or right to left), so a way back against the flow, leaving the top or arriving at the bottom, would run
+    on top of the straight edge there. Those use a side vertex, as above, if it does not serve the other kind either."""
+    groups, serves = defaultdict(list), defaultdict(set)
     for idx, e in info.items():
         a, b, _ = edges[idx]
-        if a in few and e["es"] in "tb":
-            groups[(a, e["es"])].append((idx, "exit"))
-        if b in few and e["et"] in "tb":
-            groups[(b, e["et"])].append((idx, "entry"))
+        for node, side, end in ((a, e["es"], "exit"), (b, e["et"], "entry")):
+            if kinds.get(node) in FEW and side in "tb":
+                groups[(node, side)].append((idx, end))
+            serves[(node, side)].add(end)
     for (n, side), lst in groups.items():
-        if len(lst) < 2:
-            continue
         x, y, w, h = B[n]
         far = lambda idx, end: info[idx]["nxt" if end == "exit" else "prv"]                    # box of the other end
-        lst.sort(key=lambda m: (m[1] == "entry", abs(far(*m)[0] + far(*m)[2] / 2 - (x + w / 2))))
-        for idx, end in lst[1:]:
+        diamond = kinds[n] == "diamond"
+        if diamond:
+            with_flow = "entry" if (side == "t") != up else "exit"
+            movers = [m for m in lst if m[1] != with_flow] if len({m[1] for m in lst}) > 1 else []
+        else:
+            lst.sort(key=lambda m: (m[1] == "entry", abs(far(*m)[0] + far(*m)[2] / 2 - (x + w / 2))))
+            movers = lst[1:]
+        for idx, end in movers:
             e, (fx, fy, fw, fh) = info[idx], far(idx, end)
             fx, fy = fx + fw / 2, fy + fh / 2
             down = fy > y + h / 2
             edge_y = y + h if down else y
             for to in ("r", "l") if fx >= x + w / 2 else ("l", "r"):
                 col = x + w + SIDE_GAP if to == "r" else x - SIDE_GAP
-                if _sideways(B[n], col, edge_y + (20 if down else -20), e["others"], end == "exit") is None:
+                if (diamond and serves[(n, to)] - {end}) or _sideways(B[n], col, edge_y + (20 if down else -20), e["others"], end == "exit") is None:
                     continue
+                serves[(n, to)].add(end)
                 if end == "exit":
                     e["es"], e["st"] = to, [[col, y + h / 2, edge_y]] + e["st"]
                     e["sideways"] = (True, e["sideways"][1])
@@ -158,14 +168,23 @@ def _clear(points, boxes):
     return not any(_through((points[i], points[i + 1]), b, shrink=-CLEAR) for i in range(len(points) - 1) for b in boxes)
 
 
-def _loop(s, others):
-    """A self-loop on the side of the node that has room (right, left, below, above)."""
+def _loop(s, others, kind=None, up=False):
+    """A self-loop on the side of the node that has room (right, left, below, above). On a diamond it runs from a side
+    vertex round a corner to the vertex where the flow arrives (top, or bottom when `up`), never from part-way along a
+    side; only where all four corners are blocked does it use the sides like any other shape."""
     x, y, w, h = s
-    reach = 34
+    cx, cy, reach = x + w / 2, y + h / 2, 34
     options = [((1, 0.3), (1, 0.7), [(x + w + reach, y + 0.3 * h), (x + w + reach, y + 0.7 * h)]),
                ((0, 0.3), (0, 0.7), [(x - reach, y + 0.3 * h), (x - reach, y + 0.7 * h)]),
                ((0.3, 1), (0.7, 1), [(x + 0.3 * w, y + h + reach), (x + 0.7 * w, y + h + reach)]),
                ((0.3, 0), (0.7, 0), [(x + 0.3 * w, y - reach), (x + 0.7 * w, y - reach)])]
+    if kind == "diamond":
+        right, left, top, bottom = x + w + reach, x - reach, y - reach, y + h + reach
+        corners = [((1, 0.5), (0.5, 0), [(right, cy), (right, top), (cx, top)]),
+                   ((0, 0.5), (0.5, 0), [(left, cy), (left, top), (cx, top)]),
+                   ((1, 0.5), (0.5, 1), [(right, cy), (right, bottom), (cx, bottom)]),
+                   ((0, 0.5), (0.5, 1), [(left, cy), (left, bottom), (cx, bottom)])]
+        options = (corners[2:] + corners[:2] if up else corners) + options
     for ex, en, pts in options:
         start, end = (x + ex[0] * w, y + ex[1] * h), (x + en[0] * w, y + en[1] * h)
         if _clear([start] + pts + [end], others):
@@ -344,6 +363,7 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
     tidy: also give edges that cross others, or strike through a container title, a second route (reroute.untangle), which takes longer.
     titles {container id: (x, y, w, h)}: the title text of each container, which self-loops and those second routes keep clear of."""
     tb = direction in ("TB", "TD", "BT")
+    up = direction in ("BT", "RL")                          # the flow runs towards smaller y in the top-down space used here
     flip = (lambda b: b) if tb else (lambda b: (b[1], b[0], b[3], b[2]))
     pt = (lambda p: p) if tb else (lambda p: (p[1], p[0]))
     B = {i: flip(b) for i, b in boxes.items()}
@@ -366,7 +386,7 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
     for idx, (a, b, _) in enumerate(edges):
         s, t = B[a], B[b]
         if a == b:
-            plan[idx] = _loop(s, [v for k, v in solid.items() if k not in skip(a, a)] + [r for g, r in titles.items() if g != a])
+            plan[idx] = _loop(s, [v for k, v in solid.items() if k not in skip(a, a)] + [r for g, r in titles.items() if g != a], kinds.get(a), up)
             continue
         pts = [pt(p) for p in chains.get(idx, [])]
         st = _stations(pts)
@@ -382,7 +402,7 @@ def route_edges(boxes, edges, chains, direction="TB", parents=None, labelled=Non
             es, et = _sides(s, t, others)
             nxt, prv = t, s
         info[idx] = dict(es=es, et=et, st=st, sideways=sideways, nxt=nxt, prv=prv, others=others)
-    _unshare(info, edges, B, {n for n, k in kinds.items() if k in FEW})
+    _unshare(info, edges, B, kinds, up)
     fans = _fans(info, edges, B, labelled, kinds, styles)
     for idx, e in info.items():
         a, b, _ = edges[idx]

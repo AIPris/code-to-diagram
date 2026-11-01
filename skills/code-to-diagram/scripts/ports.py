@@ -47,14 +47,14 @@ def half(kind, n, other, flat):
     """How far from the middle of a side, each way, an edge can attach and still be drawn straight and touching the
     outline. kind: the node's shape if its outline matters (diamond, ellipse, stadium, para, cylinder, note), n: length
     of the side, other: the node's other dimension, flat: the side is a real top or bottom one (a left-right layout
-    turns the picture over, the shapes stay as they are). draw.io attaches an edge on a diamond or an ellipse where
-    the line from the centre through the port meets the outline, which moves the port towards the middle (see fraction)."""
-    if kind == "diamond":
-        return 0.2 * n                                       # the port can be moved up to a quarter of the side
+    turns the picture over, the shapes stay as they are). draw.io attaches an edge on an ellipse where the line from
+    the centre through the port meets the outline, which moves the port towards the middle (see fraction). A diamond
+    has no room for ports between its vertices: off a vertex an edge starts part-way along a slope, and two edges on
+    opposite slopes at one height read as one line. Its ports are its four vertices; edges sharing one fan out after it."""
+    if kind in ("diamond", "note"):
+        return 0
     if kind == "ellipse":
         return 0.28 * n
-    if kind == "note":
-        return 0
     if kind == "stadium":
         return max(n / 2 - other / 2, 0) if flat else 0.25 * n      # its ends are semicircles
     if kind == "para":
@@ -65,14 +65,13 @@ def half(kind, n, other, flat):
 
 
 def fraction(pos, box, side, kind, tb=True):
-    """Anchor fraction along a side that makes draw.io attach the edge at coordinate pos. Linear for most shapes. A
-    diamond or an ellipse moves a port towards the middle, so it is asked for further out than it will land; so does
-    a parallelogram on its slanted sides (PARA_SLANT of its width). Inverted here, so the edge ends where it was placed."""
+    """Anchor fraction along a side that makes draw.io attach the edge at coordinate pos. Linear for most shapes. An
+    ellipse moves a port towards the middle, so it is asked for further out than it will land; so does a parallelogram
+    on its slanted sides (PARA_SLANT of its width). Inverted here, so the edge ends where it was placed. (A diamond is
+    only ever given the middle of a side, which is linear too: see half.)"""
     lo, hi = span(box, side)
     n, d = hi - lo, pos - (lo + hi) / 2
-    if kind == "diamond":
-        u = abs(d) / (n - 2 * abs(d))
-    elif kind == "ellipse":
+    if kind == "ellipse":
         u = abs(d) / math.sqrt(n * n - 4 * d * d)
     elif kind == "para" and (side in "tb") != tb:
         w, h = (box[2], box[3]) if tb else (box[3], box[2])          # the real width and height
