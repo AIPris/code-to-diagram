@@ -45,12 +45,13 @@ what the diagram should say), and deterministic scripts do the rest:
 - **Automatic layered layout with straight lines.** Ranks, node order, container sizes and a lane for every long edge
   are computed for you. Ports line up so that edges run straight (a decision takes its edges at its four corners
   and edges that share one fan out after it), a node with many outgoing links draws a tree (one
-  stem, one shared trunk) instead of a comb of parallel lines, and edges that cross others, or strike through a
-  container's title, get a second route (other sides, free ports) when that measures better. Several layouts are
-  tried and measured, and the best one is kept. What the build reports: edges running through nodes or container
-  titles, crossings, kinks, detours, edges drawn on top of each other, bends and labels lying on lines, with a hint
-  on what to cut; and the picture's aspect ratio and how much of it the nodes cover, with a hint when it is a long
-  strip (over 2.5:1 and 1500 px) whose text would shrink to nothing.
+  stem, one shared trunk) instead of a comb of parallel lines, and edges that cross others, or strike through or
+  hug a container's title, get a second route (other sides, free ports) when that measures better. Several layouts
+  are tried and measured, and the best one is kept. What the build reports: edges running through nodes or
+  container titles, or hugging them (closer than 4 px), crossings, kinks, detours, edges drawn on top of each other,
+  bends, and labels lying on lines, nodes or container title bars, or hugging the latter two, with a hint on what to
+  cut; and the picture's aspect ratio and how much of it the nodes cover, with a hint when it is a long strip (over
+  2.5:1 and 1500 px) whose text would shrink to nothing.
 - **Genuinely editable.** The `.drawio` is plain uncompressed XML. Edges are glued to their shapes (move a box and
   the arrows follow) and groups are real containers, so you can keep working in draw.io, diagrams.net or the VS Code
   draw.io extension.

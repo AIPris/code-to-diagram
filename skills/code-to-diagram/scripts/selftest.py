@@ -19,8 +19,10 @@ import deps  # noqa: E402
 import drawio_lib  # noqa: E402
 import emit  # noqa: E402
 import facts  # noqa: E402
+import labels  # noqa: E402
 import mermaid  # noqa: E402
 import metrics  # noqa: E402
+import routing  # noqa: E402
 from validate_drawio import validate  # noqa: E402
 
 SAMPLES = {
@@ -200,7 +202,7 @@ def unlisted_extensions(tmp):
 def container_titles(tmp):
     """A route through a container's title text is counted; the build then routes edges round titles where that stays straight."""
     title, beside = (60, 40, 80, 30), (150, 40, 80, 30)
-    seen = metrics.evaluate({0: [(100, 0), (100, 100)]}, {}, [("a", "b", False)], [], 0, (200, 200), None, [title, beside])["title_hits"]
+    seen = metrics.evaluate({0: [(100, 0), (100, 100)]}, {}, [("a", "b", False)], [], 0, (200, 200), None, {"g": title, "h": beside})["title_hits"]
     problems = [] if seen == 1 else [f"a route through a title: title_hits {seen}, expected 1"]
     for what, spec in (("an edge entering a container", """flowchart TD
  S([start])
@@ -223,6 +225,87 @@ def container_titles(tmp):
         report = model.layout_report
         if report["title_hits"] or report["detour"] or report["jogs"] > 1:         # the one kink allowed is Y -> Z, beside the diamond
             problems.append(f"{what}: {report['title_hits']} titles struck, {report['jogs']} kinks, {report['detour']} detours")
+    return problems
+
+
+def hugging_counted(tmp):
+    """A route closer than metrics.CLEARANCE to a node or a container's title text, but not through it, is a near miss, and the build line lists it."""
+    node, title = (100, 100, 100, 60), (60, 40, 80, 30)
+    problems = []
+    for what, ends, line, titles, want in (                                   # -> (node_hits, title_hits, near)
+            ("2 px under a node", ("a", "b"), [(50, 162), (250, 162)], None, (0, 0, 1)),
+            ("along a node's border", ("a", "b"), [(50, 160), (250, 160)], None, (0, 0, 1)),
+            ("2 px inside a node's border", ("a", "b"), [(50, 158), (250, 158)], None, (0, 0, 1)),
+            ("10 px under a node", ("a", "b"), [(50, 170), (250, 170)], None, (0, 0, 0)),
+            ("through a node", ("a", "b"), [(50, 130), (250, 130)], None, (1, 0, 0)),
+            ("2 px under the node it starts at", ("n", "b"), [(50, 162), (250, 162)], None, (0, 0, 0)),
+            ("2 px beside a title", ("a", "b"), [(142, 0), (142, 100)], {"g": title}, (0, 0, 1)),
+            ("through a title", ("a", "b"), [(100, 0), (100, 100)], {"g": title}, (0, 1, 0)),
+            ("20 px beside a title", ("a", "b"), [(160, 0), (160, 100)], {"g": title}, (0, 0, 0)),
+            ("2 px beside the title of the container it ends at", ("a", "g"), [(142, 0), (142, 100)], {"g": title}, (0, 0, 0))):
+        r = metrics.evaluate({0: line}, {"n": node}, [(*ends, False)], ["n"] if titles is None else [], 0, (300, 300), None, titles)
+        if (r["node_hits"], r["title_hits"], r["near"]) != want:
+            problems.append(f"{what}: (node_hits, title_hits, near) {(r['node_hits'], r['title_hits'], r['near'])}, expected {want}")
+    clean = metrics.evaluate({0: [(50, 170), (250, 170)]}, {"n": node}, [("a", "b", False)], ["n"], 0, (300, 300))
+    hug = metrics.evaluate({0: [(50, 162), (250, 162)]}, {"n": node}, [("a", "b", False)], ["n"], 0, (300, 300), label_near=1)
+    if hug["label_near"] != 1 or hug["score"] <= clean["score"]:
+        problems.append(f"near misses do not cost anything: score {hug['score']} against {clean['score']}")
+    found = " | ".join(c2d.layout_findings(hug))
+    for phrase in (f"within {metrics.CLEARANCE} px of a node or container title", "hug a node or container header"):
+        if phrase not in found:
+            problems.append(f"the build line lacks {phrase!r}: {found!r}")
+    if c2d.layout_findings(clean):
+        problems.append(f"a clean report is listed as {c2d.layout_findings(clean)}")
+    return problems
+
+
+def labels_off_headers(tmp):
+    """A label keeps off the title bar of a container and a few px clear of it and of nodes; where it cannot, it is counted."""
+    problems = []
+    edges, boxes = [("a", "b", False)], {"a": (80, -40, 40, 40), "b": (80, 400, 40, 40), "n": (110, 61, 50, 30)}
+    long, short = {0: [(100, 0), (100, 400)]}, {0: [(100, 0), (100, 100)]}          # a short edge has room for one spot only: the middle
+    for what, line, obstacles, bars, want in (                                          # -> (moved off the middle, touching, hugging)
+            ("a bar across the middle", long, [], [(0, 190, 200, 30)], (True, 0, 0)),
+            ("a bar 1.5 px from the middle", long, [], [(0, 211, 200, 30)], (True, 0, 0)),
+            ("a bar along the whole edge", long, [], [(0, 0, 200, 400)], (None, 1, 0)),
+            ("a bar across the only spot", short, [], [(0, 45, 200, 30)], (False, 1, 0)),
+            ("a bar 1.5 px from the only spot", short, [], [(0, 61, 200, 30)], (False, 0, 1)),
+            ("a bar 10 px from the only spot", short, [], [(0, 70, 200, 30)], (False, 0, 0)),
+            ("a node 1.5 px from the only spot", short, ["n"], [], (False, 0, 1))):
+        pos, touching, hugging = labels.place(line, edges, ["yes"], boxes, obstacles, bars)
+        got = (pos[0] != 0 if want[0] is not None else None, touching, hugging)
+        if got != want:
+            problems.append(f"{what}: (moved, touching, hugging) {got}, expected {want}")
+    spec = "flowchart TD\n S([start]) -->|go| X\n subgraph G [Group]\n  X[step one]\n end\n"                  # the label sits where the edge crosses the title bar
+    model, calls, real = mermaid.parse(spec), [], labels.place
+    labels.place = lambda *args: calls.append((args, real(*args))) or calls[-1][1]
+    try:
+        emit.build(model)
+    finally:
+        labels.place = real
+    for (lines, _, texts, _, _, bars), (pos, touching, _) in calls:
+        if len(bars) != 1:
+            problems.append(f"emit passes {len(bars)} title bars to the label placement, expected 1")
+        for idx, rel in pos.items():
+            on_bar = any(labels._overlap(labels.label_rect(texts[idx], lines[idx], (rel + 1) / 2), bar) for bar in bars)
+            if on_bar and not touching:
+                problems.append("a label lies on a title bar and is not counted")
+    if model.layout_report["label_conflicts"] or model.layout_report["label_near"]:
+        problems.append(f"an edge into a container: {model.layout_report['label_conflicts']} labels touch and {model.layout_report['label_near']} hug a title bar")
+    return problems
+
+
+def title_hugs_rerouted(tmp):
+    """An edge that runs along a container's title text, closer than metrics.CLEARANCE, gets a second route clear of it, as one that strikes through does."""
+    boxes = {"S": (200, 0, 120, 40), "G": (100, 100, 300, 200), "X": (130, 160, 240, 50)}
+    title = (200, 100, 57, 30)                                                    # the straight edge S -> X runs 3 px from its right end
+    problems = []
+    for tidy, want in ((False, 1), (True, 0)):
+        plan = routing.route_edges(boxes, [("S", "X", False)], {}, "TB", parents={"X": "G"}, tidy=tidy, titles={"G": title})
+        line = labels.polyline(plan[0], boxes["S"], boxes["X"])
+        got, bends = metrics.near_misses(line, [title], 0), metrics.bends_and_jogs(line)
+        if got != want or metrics.titles_struck(line, [title]) or bends != (0, 0):
+            problems.append(f"{'with' if tidy else 'without'} the second route: {got} near misses, {metrics.titles_struck(line, [title])} strikes, (bends, kinks) {bends}; expected {want}, 0, (0, 0)")
     return problems
 
 
@@ -531,6 +614,9 @@ REGRESSIONS = [
     ("names: whole identifiers and file names only", whole_name_matching),
     ("names: files with any extension are read", unlisted_extensions),
     ("layout: edges keep clear of container titles, and strikes are counted", container_titles),
+    ("layout: edges and labels hugging a node or container title are counted", hugging_counted),
+    ("layout: labels keep off container title bars and clear of nodes", labels_off_headers),
+    ("layout: an edge along a container title gets a second route clear of it", title_hugs_rerouted),
     ("layout: decision exits in line across a diamond are counted", inline_exits),
     ("layout: edges attach to a decision at its vertices, arrivals apart from departures", decision_vertices),
     ("layout: edges sharing a decision's vertex fan out from it without counting as drawn on top of each other", vertex_fans),
@@ -566,8 +652,9 @@ def main():
                 if len(trunks) != 1:
                     problems.append(f"fan: {len(trunks)} different trunk heights, expected 1")
             report = getattr(model, "layout_report", None)                 # a router change must not bring the wobble back
-            if report and (report["jogs"] > 1 or report["shared"] or report["node_hits"] or report["title_hits"]):          # a step the two nodes' extents leave no room to avoid may remain
-                problems.append(f"layout: {report['jogs']} kinks, {report['shared']} shared runs, {report['node_hits']} edges through nodes, {report['title_hits']} through container titles")
+            if report and (report["jogs"] > 1 or report["shared"] or report["node_hits"] or report["title_hits"] or report["near"] or report["label_near"]):          # a step the two nodes' extents leave no room to avoid may remain
+                problems.append(f"layout: {report['jogs']} kinks, {report['shared']} shared runs, {report['node_hits']} edges through nodes, {report['title_hits']} through container titles, "
+                                f"{report['near']} edges and {report['label_near']} labels hugging a node or title")
             print(f"{'FAIL' if problems else 'ok  '} {name}: {nv} shapes, {ne} edges" + (f"  {problems[:3]}" if problems else ""))
             failed += bool(problems)
     example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "examples", "import-graph", "import-graph.mmd")
@@ -575,7 +662,7 @@ def main():
         model = mermaid.parse(c2d.read_spec(example))
         emit.build(model)
         report = model.layout_report
-        bad = [f"{k}={report[k]}" for k in ("crossings", "jogs", "shared", "node_hits") if report[k]]
+        bad = [f"{k}={report[k]}" for k in ("crossings", "jogs", "shared", "node_hits", "near", "label_near") if report[k]]
         print(f"{'FAIL' if bad else 'ok  '} examples/import-graph: {report['bends']} bends" + (f"  {bad}" if bad else ""))
         failed += bool(bad)
     with tempfile.TemporaryDirectory() as tmp:                      # a spec saved by Windows PowerShell starts with a BOM

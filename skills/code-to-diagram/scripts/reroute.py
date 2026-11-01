@@ -5,12 +5,12 @@ can run straight through a third node. For every edge whose route (as routing.ro
 hits a node, search a grid built from the nodes' own edges for the cheapest orthogonal path that stays clear of all of
 them (length plus a penalty per bend) and pin it with waypoints. Edges that are already clear are left alone, so moving
 a shape in draw.io still re-routes them. An edge that strikes through a container's title text gets a new route too, by
-the same search, on other sides or ports of its nodes (untangle).
+the same search, on other sides or ports of its nodes (untangle); so does one that only hugs a title (metrics.CLEARANCE).
 """
 import heapq
 
 from labels import polyline
-from metrics import DETOUR, SHARE, _corners, _cross, _runs_overlap, _segments, _through, backtrack, bends_and_jogs, titles_struck
+from metrics import DETOUR, SHARE, _corners, _cross, _runs_overlap, _segments, _through, backtrack, bends_and_jogs, near_misses, titles_struck
 from ports import NEAR, PITCH, _usable, fraction
 
 CLEAR = 6          # distance kept from every node the edge does not belong to
@@ -180,6 +180,7 @@ TANGLE_TRIES = 12        # edges given a second route, the most tangled first
 TANGLE_STATES = 40000    # states all the searches of one diagram may expand together, and one search at most:
 TANGLE_ONE = 2500        # what bounds the time this takes (a search that hits its limit is dropped)
 TITLE_STRIKE = 6         # bends that a route through a container title is worth: a few bends to get round it, but no kink or detour
+TITLE_HUG = 2            # and one that only runs along its text, closer than metrics.CLEARANCE: worth a bend or two, no more
 SIDES = "tblr"
 
 
@@ -198,8 +199,9 @@ def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True, titles=None):
     """Rip up and reroute: an edge that crosses other edges, or runs along one, gets a new route found with a penalty for
     both, and keeps it only if the diagram measures better (a crossing counts as much as four bends). It is also tried
     on other sides of its two nodes, at a free port: with the ports where they are, a crossing is often unavoidable.
-    Then the same for an edge that strikes through the title text of a container (titles {container id: (x, y, w, h)}):
-    its new route keeps clear of every title, and replaces the old one only if it adds no kink and no detour.
+    Then the same for an edge that strikes through the title text of a container, or runs along it closer than
+    metrics.CLEARANCE (titles {container id: (x, y, w, h)}): its new route keeps clear of every title, and replaces the
+    old one only if it adds no kink and no detour.
     Edges of a fan keep the trunk they share."""
     if len(edges) > TANGLE_EDGES:
         return
@@ -219,7 +221,7 @@ def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True, titles=None):
         return sum(1 for s in _segments(_corners(line)) for segs in others for t in segs if _cross(s, t) or _runs_overlap(s, t))
 
     def worth(i, line, avoid):
-        return 4 * tangles(i, line) + max(len(_corners(line)) - 2, 0) + TITLE_STRIKE * titles_struck(line, avoid)
+        return 4 * tangles(i, line) + max(len(_corners(line)) - 2, 0) + TITLE_STRIKE * titles_struck(line, avoid) + TITLE_HUG * near_misses(line, avoid, 0)
 
     def smooth(line, old):
         """Does a route that gets round a title stay as straight as the one it replaces: no more kinks, no new detour?"""
@@ -300,7 +302,7 @@ def untangle(plan, boxes, edges, solid, skip, kinds=None, tb=True, titles=None):
     worst = sorted((i for i in live if not fan(i) and tangles(i, lines[i])), key=lambda i: -tangles(i, lines[i]))
     for i in worst[:TANGLE_TRIES]:
         retry(i, [])
-    struck = [i for i in live if not fan(i) and titles_struck(lines[i], rects(i))]
+    struck = [i for i in live if not fan(i) and (titles_struck(lines[i], rects(i)) or near_misses(lines[i], rects(i), 0))]
     for i in struck[:TANGLE_TRIES]:
         meter[0] = 0                                                     # every edge round a title has the whole budget
         retry(i, rects(i))

@@ -1,8 +1,9 @@
 """Mechanical layout quality: what a reviewer would otherwise have to find by looking at the picture.
 
 Every route is explicit (routing.route_edges), so the polylines are known and defects are countable: edges that run
-through an unrelated node, edges that cross each other, labels lying on another edge. build prints these numbers, and
-emit uses the score to choose between a top-down and a left-to-right layout when the spec does not say which.
+through an unrelated node, edges that cross each other, labels lying on another edge, edges and labels that hug a node
+or a container title they do not belong to. build prints these numbers, and emit uses the score to choose between a
+top-down and a left-to-right layout when the spec does not say which.
 """
 import math
 
@@ -37,6 +38,7 @@ DETOUR = 40     # a route that travels this far against its own direction (out a
 INLINE = 8       # ends on opposite sides of one diamond this close in height are one line to the eye
 SHARE = 3       # two parallel runs closer than this look like one line
 STRIP = 2.5     # a canvas whose long side is more than this many times its short side is a strip: fitted to a screen its text shrinks
+CLEARANCE = 4   # an edge or label this close to a node or container title it does not belong to, without touching it, hugs it: it looks like it starts there
 
 
 def ratio(w, h):
@@ -93,6 +95,13 @@ def titles_struck(line, titles):
     return sum(1 for t in titles if any(_through(s, t, 0) for s in segs))
 
 
+def near_misses(line, boxes, shrink=3):
+    """How many of the boxes (x, y, w, h) does a route pass within CLEARANCE of without going through them? Going through one
+    means entering it by more than `shrink` px, which is a hit of its own; a route along a border, or just outside it, only hugs."""
+    segs = _segments(line)
+    return sum(1 for b in boxes if any(_through(s, b, -CLEARANCE) for s in segs) and not any(_through(s, b, shrink) for s in segs))
+
+
 def _runs_overlap(s, t):
     """Do two parallel axis-aligned segments of different edges lie on top of each other for more than a few px?"""
     (a1, b1), (a2, b2) = s
@@ -140,18 +149,23 @@ def _fan(ends, s, t):
                for (_, _, p), idxs in ends.items())
 
 
-def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, titles=(), diamonds=()):
-    """lines {edge idx: polyline}; bundles {edge idx: fan key}: edges of one fan share their trunk on purpose; titles: rectangles
-    (x, y, w, h) of container title text, which no edge may strike through; diamonds: ids of decision nodes, whose exits
-    must not leave on opposite sides at one height (they read as one line through the diamond) and whose edges may share
-    the stub at a vertex (several departures, or several arrivals, fan out from it). -> dict(node_hits, title_hits, inline, crossings, label_conflicts, bends, jogs, shared, detour, score)."""
-    hits = struck = 0
+def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, titles=None, diamonds=(), label_near=0):
+    """lines {edge idx: polyline}; bundles {edge idx: fan key}: edges of one fan share their trunk on purpose; titles {container id:
+    (x, y, w, h)}: the title text of each container, which no edge may strike through (its own ends excepted); diamonds: ids of
+    decision nodes, whose exits must not leave on opposite sides at one height (they read as one line through the diamond) and
+    whose edges may share the stub at a vertex (several departures, or several arrivals, fan out from it); label_near: labels
+    placed within CLEARANCE of a node or container header (labels.place). Edges that pass within CLEARANCE of a node or title they
+    do not belong to, without going through it, are near misses too.
+    -> dict(node_hits, title_hits, near, label_near, inline, crossings, label_conflicts, bends, jogs, shared, detour, score)."""
+    hits = struck = near = 0
     for idx, line in lines.items():
         a, b, _ = edges[idx]
-        for n in leaves:
-            if n not in (a, b) and any(_through(s, boxes[n]) for s in _segments(line)):
-                hits += 1
-        struck += titles_struck(line, titles)
+        segs = _segments(line)
+        apart = [boxes[n] for n in leaves if n not in (a, b)]
+        rects = [r for g, r in (titles or {}).items() if g not in (a, b)]
+        hits += sum(1 for box in apart if any(_through(s, box) for s in segs))
+        struck += titles_struck(line, rects)
+        near += near_misses(line, apart) + near_misses(line, rects, 0)
     ends = _vertex_ends(lines, edges, diamonds)
     inline = sum(_inline_exits(boxes[n], [lines[i][0] for (m, kind, _), idxs in ends.items() if m == n and kind == "exit" for i in idxs]) for n in diamonds)
     segs = [(idx, s) for idx, line in lines.items() for s in _segments(line)]
@@ -169,5 +183,5 @@ def evaluate(lines, boxes, edges, leaves, label_conflicts, size, bundles=None, t
     shared = sum(1 for i in range(len(merged)) for j in range(i + 1, len(merged))
                  if merged[i][0] != merged[j][0] and not same_fan(merged[i][0], merged[j][0]) and _runs_overlap(merged[i][1], merged[j][1])
                  and not _fan(ends, merged[i], merged[j]))
-    score = 25 * hits + 10 * struck + 6 * inline + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared + 2 * detour
-    return dict(node_hits=hits, title_hits=struck, inline=inline, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, detour=detour, score=score)
+    score = 25 * hits + 10 * struck + (near + label_near) + 6 * inline + crossings + 6 * label_conflicts + 4 * aspect + 2 * (w * h) / 1e6 + 0.25 * bends + 2 * jogs + 2 * shared + 2 * detour
+    return dict(node_hits=hits, title_hits=struck, near=near, label_near=label_near, inline=inline, crossings=crossings, label_conflicts=label_conflicts, bends=bends, jogs=jogs, shared=shared, detour=detour, score=score)
