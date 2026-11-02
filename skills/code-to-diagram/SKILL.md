@@ -20,6 +20,7 @@ You write a short Mermaid spec. One command lays it out, writes the `.drawio` (e
 4. **Build:** `python "$SKILL_DIR/scripts/c2d.py" build diagrams/<slug>/<slug>.mmd`
    - `SPEC ERRORS` lists unsupported or malformed lines (nothing is built): fix them, rebuild.
    - `structure` warnings: fix the real ones.
+   - `legend: node fills with no legend entry`: nodes are drawn in a colour the `%% legend:` does not explain (decisions are yellow and plain nodes blue unless classed): add an entry for each colour, or give those nodes the colour of an entry. Only checked when the legend has colour entries; start, end and note shapes are exempt.
    - `names ... NOT FOUND in source`: a label does not exist in the `%% src:` files; misspelled or invented? Check and correct (a deliberate pseudo-name is fine).
    - `imports: N solid arrows ... have NO import behind them`: those arrows claim an import that the code does not contain; fix them or draw them dashed.
    - `names: note - N files not read`: binary or very large files were skipped; every other file is searched, whatever its extension.
@@ -34,7 +35,7 @@ You write a short Mermaid spec. One command lays it out, writes the `.drawio` (e
 
 - **flowchart TD|LR** (TD = top-down; state, class and ER diagrams choose top-down or left-to-right themselves unless the spec says `direction LR`). Nodes: `A[text]` box, `A([text])` start/end, `A{text}` decision, `A((text))` circle, `A[(text)]` database, `A[/text/]` I/O, `A(text)`. Edges: `-->`, `---`, `-.->`, `==>`, `-->|label|`, `-- label -->`, `A & B --> C`. `subgraph id [Title]` ... `end` (nestable; an edge may end at a subgraph id). Colour: `classDef name fill:#dae8fc,stroke:#6c8ebf,stroke-width:3px`, `A:::name`, `class A,B name`; the names `blue green red yellow purple gray white` work without classDef.
 - Line break inside a label: `<br/>`. Ids: letters, digits, `_` only. Quote labels that contain brackets, parentheses or `|`: `A["parse(text) | none"]`.
-- Comment directives: `%% src: src/ "my repo/lib.js"` (files or dirs the labels are checked against, quote paths with spaces; always give it), `%% legend: hub=imported by 4+ files; leaf=imports nothing` (class or colour name = meaning, drawn as a legend box, in sequence diagrams too; only when colour carries meaning).
+- Comment directives: `%% src: src/ "my repo/lib.js"` (files or dirs the labels are checked against, quote paths with spaces; always give it), `%% legend: hub=imported by 4+ files; leaf=imports nothing` (class or colour name = meaning; an arrow style too, `-->`, `-.->` or `==>` = meaning, drawn with a sample line, e.g. `-.->=calls`; drawn as a legend box, in sequence diagrams too; only when colour or line style carries meaning).
 - Not supported, reported by line: click/links, themes/init, concurrent states, namespaces.
 
 The other types, one example each (everything else is standard Mermaid):

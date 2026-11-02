@@ -2,8 +2,9 @@
 import re
 
 import sequence
-from drawio_lib import CHAR_W, LINE_H, PALETTE, Diagram, class_height, text_width, wrap_lines
+from drawio_lib import CHAR_W, EDGES, LEGEND_SAMPLE, LINE_H, PALETTE, Diagram, class_height, text_width, wrap_lines
 import labels
+import mermaid
 import metrics
 from layout import HEADER, layout
 from ports import widen
@@ -84,14 +85,37 @@ def edge_style(e):
     return kind, extra
 
 
+def key_colours(model, key):
+    """(fill, stroke) a legend key stands for: the colours of the class of that name, else those of the palette colour."""
+    props = model.classes.get(key, {})
+    fill, stroke = PALETTE.get(key, PALETTE["blue"])
+    return _hex(props.get("fill", "")) or fill, _hex(props.get("stroke", "")) or stroke
+
+
 def legend(d, model, x, y):
-    """Legend under the diagram for `%% legend: key=meaning` entries (key = a class or colour name). Returns its height."""
+    """Legend under the diagram for `%% legend: key=meaning` entries (key = a class or colour name, or an arrow style). Returns its height."""
     rows = []
     for key, meaning in model.legend:
-        props = model.classes.get(key, {})
-        fill, stroke = PALETTE.get(key, PALETTE["blue"])
-        rows.append((meaning, _hex(props.get("fill", "")) or fill, _hex(props.get("stroke", "")) or stroke))
-    return d.legend(x, y, rows, w=max(200, max(text_width(m, 6.6) for m, _, _ in rows) + 30))
+        if key in mermaid.LEGEND_EDGES:
+            kind, extra = edge_style(mermaid.Edge("", "", line=mermaid.LEGEND_EDGES[key]))
+            rows.append((meaning, None, None, EDGES[kind] + extra))
+        else:
+            rows.append((meaning, *key_colours(model, key)))
+    return d.legend(x, y, rows, w=max(200, max(text_width(r[0], 6.6) + (LEGEND_SAMPLE if len(r) > 3 else 0) for r in rows) + 30))
+
+
+def legend_gaps(model):
+    """{fill: [node ids]} of the node fills that no colour entry of the `%% legend:` shows (compared by colour, so a class and a
+    colour name that look alike explain each other). Start, end, fork and note shapes are not coloured by meaning. {} without a legend of colours."""
+    shown = {key_colours(model, k)[0].lower() for k, _ in model.legend if k not in mermaid.LEGEND_EDGES}
+    gaps = {}
+    for i, n in model.nodes.items():
+        if shown and n.shape not in ("start", "end", "fork", "note"):
+            name, fill, _, _ = look(model, n)
+            fill = (fill or PALETTE[name][0]).lower()
+            if fill not in shown:
+                gaps.setdefault(fill, []).append(i)
+    return gaps
 
 
 def build(model):
