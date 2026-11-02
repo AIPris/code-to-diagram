@@ -160,6 +160,11 @@ def cmd_build(argv):
               + f"; {lr['bends']} bends in {ne} edges")
         if lr["node_hits"] or lr["title_hits"] or lr["crossings"] > 12 or lr["label_conflicts"] > 2 or lr["jogs"] > 3 or lr["detour"] > 2 or lr["bends"] > 3 * max(ne, 1):
             print("  dense: shorten labels, drop edges to nodes everything uses, group nodes in subgraphs, or split the diagram")
+    if model.kind == "sequence":
+        sr = model.sequence_report
+        found = [f"{sr['clashes']} text(s) lie on another text or on a message line (shorten them)" if sr["clashes"] else "",
+                 f"{sr['note_hits']} note(s) cover the lifeline of a participant they do not name (shorten the note, or put it over the participants)" if sr["note_hits"] else ""]
+        print("layout: sequence; " + (", ".join(f for f in found if f) or "no overlaps") + f"; {sr['messages']} messages, {sr['frames']} frames")
     for line in cap([f"  {m}" for m in errors + warnings]):
         print(line)
     note = legend_note(model)
