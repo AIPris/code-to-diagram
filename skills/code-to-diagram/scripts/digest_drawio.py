@@ -108,8 +108,17 @@ def main(path):
                 return best[1]
         return f"<{cid}>"
 
+    def in_legend(cid):
+        """Inside a container labelled Legend: its sample lines show a style, they are not edges of the diagram."""
+        p = parent.get(cid)
+        while p in cells:
+            if cells[p][1].get("vertex") == "1" and label.get(p, "").lower() == "legend":
+                return True
+            p = parent.get(p)
+        return False
+
     verts = [cid for cid, (_, c) in cells.items() if c.get("vertex") == "1"]
-    edges = [cid for cid, (_, c) in cells.items() if c.get("edge") == "1"]
+    edges = [cid for cid, (_, c) in cells.items() if c.get("edge") == "1" and not in_legend(cid)]
     unglued = [e for e in edges if not (cells[e][1].get("source") and cells[e][1].get("target"))]
     print(f"{len(verts)} shapes, {len(edges)} edges" + (f", {len(unglued)} FREE-FLOATING edges (not glued to shapes)" if unglued else ""))
 

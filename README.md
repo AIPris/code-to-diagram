@@ -231,7 +231,8 @@ The agent then reports the paths, what the diagram shows, what it left out and a
   relations are drawn dashed.
 - Past roughly 25 nodes a diagram stops being readable. The skill groups with subgraphs, drops leaves or splits the
   diagram in two.
-- Colour carries meaning (hub, leaf, error) and comes with a legend.
+- Colour carries meaning (hub, leaf, error) and comes with a legend. The legend can also explain an arrow style
+  (`%% legend: -.->=calls; ==>=hot path`), and the build warns about any node colour the legend leaves out.
 - Layout fixes made by hand in the XML are overwritten by the next build. For a small change to a hand-edited file,
   edit the XML in place and validate it with `c2d.py check` (see [`references/xml.md`](skills/code-to-diagram/references/xml.md)).
 

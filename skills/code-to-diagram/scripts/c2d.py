@@ -27,7 +27,7 @@ import facts  # noqa: E402
 import mermaid  # noqa: E402
 import metrics  # noqa: E402
 import render  # noqa: E402
-from drawio_lib import untouched  # noqa: E402
+from drawio_lib import PALETTE, untouched  # noqa: E402
 from validate_drawio import validate  # noqa: E402
 
 STALE_SECONDS = 30 * 60
@@ -83,6 +83,17 @@ def cap(lines, n=SHOW):
     return lines[:n] + ([f"  ... +{len(lines) - n} more"] if len(lines) > n else [])
 
 
+def legend_note(model):
+    """The `legend:` line for node fills that the `%% legend:` does not explain; '' when it explains all of them or there is none."""
+    gaps = emit.legend_gaps(model)
+    if not gaps:
+        return ""
+    names = {fill.lower(): name for name, (fill, _) in PALETTE.items()}
+    shown = lambda ids: ", ".join((model.nodes[i].label.splitlines() or [i])[0][:24] for i in ids[:3]) + (", ..." if len(ids) > 3 else "")
+    return ("node fills with no legend entry: " + ", ".join(f"{names.get(fill, fill)} ({shown(ids)})" for fill, ids in gaps.items())
+            + "; add a `colour=meaning` entry for each to `%% legend:`, or colour those nodes like an entry")
+
+
 def strip_hint(model, w, h):
     """What to change when the canvas is a strip (metrics.STRIP) long enough to be scaled down to fit a screen; '' otherwise.
     A short strip (a chain of three nodes) stays legible as it is."""
@@ -134,7 +145,8 @@ def cmd_build(argv):
     kept = archive(base, diagram.xml(), "--archive" in argv)
     diagram.save(base + ".drawio")
     errors, warnings, nv, ne = validate(base + ".drawio")
-    lr = getattr(model, "layout_report", None)
+    ne -= sum(1 for key, _ in model.legend if key in mermaid.LEGEND_EDGES)         # a legend's sample lines are not edges of the diagram
+    lr =getattr(model, "layout_report", None)
     print(f"built {base}.drawio  [{model.kind}: {len(model.nodes) or len(model.participants)} "
           f"{'participants' if model.kind == 'sequence' else 'nodes'}, "
           f"{ne if model.kind != 'sequence' else sum(1 for i in model.items if i[0] == 'msg')} "
@@ -150,7 +162,10 @@ def cmd_build(argv):
             print("  dense: shorten labels, drop edges to nodes everything uses, group nodes in subgraphs, or split the diagram")
     for line in cap([f"  {m}" for m in errors + warnings]):
         print(line)
-    srcs = [resolve_src(os.path.normpath(p), os.path.dirname(os.path.abspath(mmd))) for p in model.srcs]
+    note = legend_note(model)
+    if note:
+        print(f"legend: {note}")
+    srcs =[resolve_src(os.path.normpath(p), os.path.dirname(os.path.abspath(mmd))) for p in model.srcs]
     res = facts.check(model, srcs)
     if res is None:
         print("names: NOT CHECKED - " + (f"none of the `%% src:` paths exist from {os.getcwd()}: {' '.join(srcs[:4])} (run build from the source repo's root, or use absolute paths)"

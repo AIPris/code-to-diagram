@@ -8,6 +8,7 @@ Extra directives, written as comments so the file stays valid Mermaid:
     %% src: src/ lib/util.js            files checked against the labels (build warns about names found nowhere);
                                          quote a path with spaces: %% src: "my repo/src"
     %% legend: hub=imported by 4+ files; leaf=imports nothing      class or colour name = meaning
+    %% legend: -.->=calls; ==>=hot path                              an arrow style (-->, -.->, ==>) = meaning
 Built-in colour names usable as classes without classDef: blue green red yellow purple gray white.
 """
 import html
@@ -94,6 +95,16 @@ def parse_style(text):
     return out
 
 
+LEGEND_EDGES = {"-->": "solid", "-.->": "dotted", "==>": "thick"}      # arrows a legend entry can stand for, and the line each draws
+
+
+def _legend_entry(text):
+    """(key, meaning) of one `key=meaning` legend entry, None without an `=`. The key is a class or colour name, or an arrow
+    (`==>` holds an `=` of its own, so the arrows are matched first)."""
+    m = re.match(r"\s*(-->|-\.->|==>)\s*=\s*(.*)$", text) or re.match(r"\s*([^=]*?)\s*=\s*(.*)$", text)
+    return (m.group(1), m.group(2).strip()) if m else None
+
+
 def parse(text):
     """Mermaid source -> Model (errors collected in model.errors, never raised)."""
     lines = text.splitlines()
@@ -104,7 +115,7 @@ def parse(text):
         if m and m.group(1) == "src":
             srcs += [p.strip('"') for p in re.findall(r'"[^"]+"|\S+', m.group(2))]
         elif m:
-            legend += [tuple(x.strip() for x in e.split("=", 1)) for e in m.group(2).split(";") if "=" in e]
+            legend += [entry for entry in map(_legend_entry, m.group(2).split(";")) if entry]
     if not head:
         m = Model("flow")
         m.errors.append((1, "", "empty diagram"))

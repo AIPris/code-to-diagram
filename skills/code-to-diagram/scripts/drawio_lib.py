@@ -51,6 +51,7 @@ EDGES = {
     "depend": "dashed=1;endArrow=open;endFill=0;endSize=8;",
     "er": "endFill=0;startFill=0;",
 }
+LEGEND_SAMPLE = 44     # room a legend row keeps left of its text for the sample line of an arrow style
 ROW_STYLE = ("text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=6;spacingRight=4;"
              "overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=nowrap;html=1;")
 SEP_STYLE = ("line;strokeWidth=1;fillColor=none;align=left;verticalAlign=middle;spacingTop=-1;spacingLeft=3;"
@@ -201,16 +202,22 @@ class Diagram:
         return id
 
     def legend(self, x, y, entries, w=240, row_h=26):
-        """Legend box. entries: [(label, fill, stroke)]. A stack-layout container: draw.io re-stacks rows when one is added."""
+        """Legend box. entries: [(label, fill, stroke)], or (label, None, None, edge style) for an arrow style: a sample line
+        stands left of the text. A stack-layout container: draw.io re-stacks rows when one is added."""
         head = 28
         style = ("swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=28;horizontalStack=0;resizeParent=1;"
                  "resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;")
         self._cell("legend", "Legend", style, "vertex", "1", dict(x=x, y=y, width=w, height=head + row_h * len(entries)))
-        for i, (label, fill, stroke) in enumerate(entries):
+        for i, (label, fill, stroke, *sample) in enumerate(entries):
+            top = head + row_h * i
+            colours = f"fillColor={fill};strokeColor={stroke};" if fill else "fillColor=none;strokeColor=none;"
             self._cell(f"legend-r{i}", label_text(label),
-                       f"text;html=1;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;whiteSpace=nowrap;overflow=hidden;"
-                       f"fillColor={fill};strokeColor={stroke};rotatable=0;portConstraint=eastwest;", "vertex", "legend",
-                       dict(y=head + row_h * i, width=w, height=row_h))
+                       f"text;html=1;align=left;verticalAlign=middle;spacingLeft={LEGEND_SAMPLE if sample else 8};fontSize=11;whiteSpace=nowrap;"
+                       f"overflow=hidden;{colours}rotatable=0;portConstraint=eastwest;", "vertex", "legend", dict(y=top, width=w, height=row_h))
+            if sample:                                      # a free-standing edge: draw.io lays out vertices only, so the stack ignores it
+                ends = [ET.Element("mxPoint", {"x": _num(px), "y": _num(top + row_h / 2), "as": role})
+                        for px, role in ((8, "sourcePoint"), (LEGEND_SAMPLE - 8, "targetPoint"))]
+                self._cell(f"legend-s{i}", "", EDGE_BASE + sample[0], "edge", "legend", None, ends).find("mxGeometry").set("relative", "1")
         return head + row_h * len(entries)
 
     # -- edges -------------------------------------------------------------------------------------------------

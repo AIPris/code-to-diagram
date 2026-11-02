@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import c2d  # noqa: E402
 import deps  # noqa: E402
+import digest_drawio  # noqa: E402
 import drawio_lib  # noqa: E402
 import emit  # noqa: E402
 import facts  # noqa: E402
@@ -456,6 +457,68 @@ def sequence_title_legend(tmp):
     return problems
 
 
+def legend_checks(tmp):
+    """A `%% legend:` is checked against the fills the nodes are drawn with, and an arrow style can be a legend entry."""
+    problems = []
+    flow = ("flowchart TD\n  A([Start]) --> B{Ok?}\n  B -->|yes| C[Work]:::hub\n  B -->|no| D([Stop]):::bad\n"
+            "  classDef hub fill:#dae8fc,stroke:#6c8ebf\n  classDef bad fill:#f8cecc,stroke:#b85450\n  classDef pick fill:#fff2cc\n")
+    state = "stateDiagram-v2\n  [*] --> Idle\n  Idle --> [*]\n  note right of Idle : waiting\n"
+    for what, legend, spec, want in (
+            ("a decision in its default yellow, no entry for it", "hub=work; bad=error", flow, {"#fff2cc": ["B"]}),
+            ("the colour named by a legend key", "hub=work; bad=error; yellow=decision", flow, {}),
+            ("the same colour reached through a class", "hub=work; bad=error; pick=decision", flow, {}),
+            ("no legend at all", "", flow, {}),
+            ("a legend of arrow styles only", "-.->=calls", flow, {}),
+            ("start, end and note shapes, which carry no palette colour", "blue=state", state, {})):
+        model = mermaid.parse((f"%% legend: {legend}\n" if legend else "") + spec)
+        got = emit.legend_gaps(model)
+        if got != want:
+            problems.append(f"{what}: {got}, expected {want}")
+    tree(tmp, {f"src/{n}.py": "".join(f"import {m}\n" for m in imports) for n, imports in
+               {"main": ["a", "b", "c", "d"], "a": ["hub"], "b": ["hub"], "c": ["hub"], "d": ["hub"], "hub": ["leaf"], "leaf": [], "lone": []}.items()})
+    generated = mermaid.parse(deps.mermaid(deps.scan(deps.collect([os.path.join(tmp, "src")], [])), entry=None))
+    if not generated.legend or emit.legend_gaps(generated):
+        problems.append(f"a spec from `deps`: legend {generated.legend}, unexplained fills {emit.legend_gaps(generated)}")
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "examples")
+    for name in ("import-graph", "build-pipeline"):
+        path = os.path.join(root, name, name + ".mmd")
+        if os.path.exists(path) and emit.legend_gaps(mermaid.parse(c2d.read_spec(path))):
+            problems.append(f"examples/{name}: unexplained fills {emit.legend_gaps(mermaid.parse(c2d.read_spec(path)))}")
+    for src in ("hub=work; -.->=calls; ==>=hot path", "hub=work;-.-> = calls;==> = hot path"):      # `==>` holds an `=` of its own
+        got = mermaid.parse(f"%% legend: {src}\nflowchart TD\n  A --> B\n").legend
+        if got != [("hub", "work"), ("-.->", "calls"), ("==>", "hot path")]:
+            problems.append(f"legend {src!r} parsed as {got}")
+    (mmd,) = tree(tmp, {"edges/e.mmd": "%% legend: hub=work; -->=imports; -.->=calls; ==>=hot path\nflowchart TD\n  A:::hub --> B\n  classDef hub fill:#dae8fc\n"})
+    text, _ = build_output(mmd)
+    if ", 1 edges," not in text:                                                   # the three sample lines are not edges of the diagram
+        problems.append(f"the built line counts the legend's sample lines as edges: {text.splitlines()[0][-90:]!r}")
+    model = mermaid.parse(c2d.read_spec(mmd))
+    diagram, _ = emit.build(model)
+    path = diagram.save(os.path.join(tmp, "edges", "e.drawio"))
+    cells = {c.get("id"): c for c in ET.parse(path).getroot().iter("mxCell")}
+    samples = [c.get("style", "") for c in cells.values() if c.get("edge") == "1" and c.get("parent") == "legend"]
+    rows = [c.get("style", "") for c in cells.values() if c.get("parent") == "legend" and c.get("vertex") == "1"]
+    if len(samples) != 3 or [("dashed=1" in s, "strokeWidth=3" in s) for s in samples] != [(False, False), (True, False), (False, True)]:
+        problems.append(f"legend sample edges: {samples}")
+    if sum("fillColor=none" in r for r in rows) != 3 or sum("fillColor=#dae8fc" in r for r in rows) != 1:
+        problems.append(f"legend rows: {rows}")
+    errors, warnings, _, _ = validate(path)
+    if errors or warnings:
+        problems.append(f"the legend with arrow samples does not validate: {errors + warnings}")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):                                          # `digest` must not take the sample lines for loose edges
+        digest_drawio.main(path)
+    if "FREE-FLOATING" in out.getvalue() or "? -> ?" in out.getvalue() or not re.match(r"\d+ shapes, 1 edges\b", out.getvalue()):
+        problems.append(f"the digest of a legend with arrow samples: {out.getvalue().splitlines()[:1] + [l for l in out.getvalue().splitlines() if '?' in l]}")
+    for what, legend, found in (("unexplained fill", "hub=work; bad=error", True), ("all fills explained", "hub=work; bad=error; yellow=decision", False)):
+        (mmd,) = tree(tmp, {f"gap{found}/g.mmd": f"%% legend: {legend}\n" + flow})
+        text, _ = build_output(mmd)
+        line = re.search(r"^legend: (.*)$", text, re.M)
+        if bool(line) != found or (found and not ("yellow" in line.group(1) and "Ok?" in line.group(1))):
+            problems.append(f"{what}: the build prints {line.group(0) if line else None!r}")
+    return problems
+
+
 def canvas_proportions(tmp):
     """The build line gives the aspect ratio and the share of the canvas the nodes cover; a strip long enough to be scaled down gets a hint
     naming a fix that fits it, and a short strip or an ordinary proportion gets none."""
@@ -665,6 +728,7 @@ REGRESSIONS = [
     ("layout: edges attach to a decision at its vertices, arrivals apart from departures", decision_vertices),
     ("layout: edges sharing a decision's vertex fan out from it without counting as drawn on top of each other", vertex_fans),
     ("title and legend drawn for every diagram type", sequence_title_legend),
+    ("legend: fills without an entry reported, arrow styles accepted as entries", legend_checks),
     ("build: aspect ratio and fill reported, a hint for a long strip", canvas_proportions),
     ("check: legend samples, frames and loops of a hand edit accepted, real defects still reported", hand_edits),
     ("imports: arrows checked against the file they name", import_arrows),
