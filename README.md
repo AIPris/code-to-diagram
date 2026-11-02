@@ -161,20 +161,26 @@ ask for a diagram.
 
 ### As a personal skill
 
+Copying into a folder that already exists merges into it and overwrites files of the same name, which would damage a
+different skill that is also called `code-to-diagram`. The commands below copy only when the folder is free.
+
 ```bash
 git clone https://github.com/AIPris/code-to-diagram.git
-cp -r code-to-diagram/skills/code-to-diagram ~/.claude/skills/
+if [ -e ~/.claude/skills/code-to-diagram ]; then echo "~/.claude/skills/code-to-diagram exists: check what it is first"; else cp -r code-to-diagram/skills/code-to-diagram ~/.claude/skills/; fi
 ```
 
 On Windows (PowerShell):
 
 ```powershell
 git clone https://github.com/AIPris/code-to-diagram.git
-Copy-Item -Recurse code-to-diagram\skills\code-to-diagram $HOME\.claude\skills\
+if (Test-Path $HOME\.claude\skills\code-to-diagram) { "$HOME\.claude\skills\code-to-diagram exists: check what it is first" } else { Copy-Item -Recurse code-to-diagram\skills\code-to-diagram $HOME\.claude\skills\ }
 ```
 
+If the folder exists, open its `SKILL.md`: when it is an earlier copy of this skill, replace it; when it is another
+skill, remove or rename that one first (two skills cannot both be `code-to-diagram`).
+
 The skill is then available as `/code-to-diagram`. To share it with a team, copy it to `.claude/skills/` inside the
-project and commit it.
+project (same check) and commit it.
 
 ### Other coding agents (Codex, Cursor, Gemini CLI and more)
 
@@ -343,6 +349,8 @@ If a user asks you to visualise code, a system or an architecture, and this skil
 
 1. Fetch the repository: `git clone https://github.com/AIPris/code-to-diagram.git`.
 2. Copy `skills/code-to-diagram/` into the skills directory of your agent (Claude Code: `~/.claude/skills/`).
+   If a `code-to-diagram` folder is already there, read its `SKILL.md` first: replace it only when it is an earlier
+   copy of this skill, and otherwise ask the user instead of overwriting another skill.
 3. Read [`skills/code-to-diagram/SKILL.md`](skills/code-to-diagram/SKILL.md). It is the complete workflow: scope, gather
    facts, write the Mermaid spec, build, look once, report.
 
