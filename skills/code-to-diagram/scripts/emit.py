@@ -122,9 +122,10 @@ def _lay_out(model, direction, gname, edge_text, flatten=False, tidy=False):
     plan = route_edges(res.abs_box, edges, res.chains_abs, direction, parents=parent, labelled=[bool(t) for t in edge_text], kinds=kinds,
                        styles=[edge_style(e) for e in model.edges], tidy=tidy, titles=titles)
     lines = labels.lines_of(plan, res.abs_box, edges)
-    spots, touching = labels.place(lines, edges, edge_text, res.abs_box, model.nodes)
-    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()}, list(titles.values()),
-                              [i for i, n in model.nodes.items() if n.shape == "diamond"])
+    headers = [(*res.abs_box[g][:3], HEADER) for g in groups]       # the whole title bar: a label on it covers the container's name or its colour
+    spots, touching, hugging = labels.place(lines, edges, edge_text, res.abs_box, model.nodes, headers)
+    quality = metrics.evaluate(lines, res.abs_box, edges, list(model.nodes), touching, res.extent, {i: p.get("bundle") for i, p in plan.items()}, titles,
+                              [i for i, n in model.nodes.items() if n.shape == "diamond"], hugging)
     return res, plan, spots, quality, parent, edges
 
 
@@ -136,7 +137,7 @@ def _graph(model):
     flats = (False, True) if len(model.nodes) <= STRAIGHTEN_MAX else (False,)         # a huge graph takes too long to lay out twice more
     runs = [(_lay_out(model, d, gname, edge_text, flat), d, flat) for d in tried for flat in flats]     # the layout that measures best wins
     best, direction, flat = min(runs, key=lambda r: r[0][3]["score"])
-    if best[3]["crossings"] or best[3]["shared"] or best[3]["title_hits"]:         # only the winner is worth the slower search for better routes
+    if best[3]["crossings"] or best[3]["shared"] or best[3]["title_hits"] or best[3]["near"]:         # only the winner is worth the slower search for better routes
         again = _lay_out(model, direction, gname, edge_text, flat, tidy=True)
         best = min(best, again, key=lambda r: r[3]["score"])
     res, plan, spots, quality, parent, edges = best

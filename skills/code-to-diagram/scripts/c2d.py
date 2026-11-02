@@ -97,6 +97,21 @@ def strip_hint(model, w, h):
     return f"{metrics.aspect_text(w, h)} is a {'wide' if wide else 'tall'} strip, its text shrinks when the image is fitted to a screen; {fix}"
 
 
+def layout_findings(lr):
+    """The defects a layout report (metrics.evaluate) counts, as the phrases the build line lists; [] when there is nothing to fix."""
+    found = [f"{lr['node_hits']} edge(s) run through a node" if lr["node_hits"] else "",
+             f"{lr['title_hits']} edge(s) strike through a container title" if lr["title_hits"] else "",
+             f"{lr['near']} edge(s) pass within {metrics.CLEARANCE} px of a node or container title" if lr["near"] else "",
+             f"{lr['inline']} decision(s) with two edges leaving in line on opposite sides" if lr["inline"] else "",
+             f"{lr['crossings']} edge crossings" if lr["crossings"] > 3 else "",
+             f"{lr['jogs']} kink(s) (a sideways step under {metrics.JOG} px)" if lr["jogs"] else "",
+             f"{lr['detour']} edges go out past their target and back" if lr["detour"] > 2 else "",
+             f"{lr['shared']} run(s) of two edges on top of each other" if lr["shared"] else "",
+             f"{lr['label_conflicts']} label(s) touch a line, node or container header" if lr["label_conflicts"] else "",
+             f"{lr['label_near']} label(s) hug a node or container header" if lr["label_near"] else ""]
+    return [f for f in found if f]
+
+
 def cmd_build(argv):
     args = [a for a in argv if not a.startswith("--")]
     scale = float(argv[argv.index("--scale") + 1]) if "--scale" in argv else 0
@@ -129,15 +144,7 @@ def cmd_build(argv):
         print(f"previous version kept as {kept}.*")
     print(f"structure: {'FAIL' if errors else 'ok'} ({len(errors)} errors, {len(warnings)} warnings)")
     if lr:
-        bad = [f"{lr['node_hits']} edge(s) run through a node" if lr["node_hits"] else "",
-               f"{lr['title_hits']} edge(s) strike through a container title" if lr["title_hits"] else "",
-               f"{lr['inline']} decision(s) with two edges leaving in line on opposite sides" if lr["inline"] else "",
-               f"{lr['crossings']} edge crossings" if lr["crossings"] > 3 else "",
-               f"{lr['jogs']} kink(s) (a sideways step under {metrics.JOG} px)" if lr["jogs"] else "",
-               f"{lr['detour']} edges go out past their target and back" if lr["detour"] > 2 else "",
-               f"{lr['shared']} run(s) of two edges on top of each other" if lr["shared"] else "",
-               f"{lr['label_conflicts']} label(s) touch a line or node" if lr["label_conflicts"] else ""]
-        print(f"layout: {lr['direction']}{' (chosen automatically)' if lr['auto'] else ''}; " + (", ".join(b for b in bad if b) or "no overlaps")
+        print(f"layout: {lr['direction']}{' (chosen automatically)' if lr['auto'] else ''}; " + (", ".join(layout_findings(lr)) or "no overlaps")
               + f"; {lr['bends']} bends in {ne} edges")
         if lr["node_hits"] or lr["title_hits"] or lr["crossings"] > 12 or lr["label_conflicts"] > 2 or lr["jogs"] > 3 or lr["detour"] > 2 or lr["bends"] > 3 * max(ne, 1):
             print("  dense: shorten labels, drop edges to nodes everything uses, group nodes in subgraphs, or split the diagram")
