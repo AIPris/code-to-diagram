@@ -25,6 +25,7 @@ import mermaid  # noqa: E402
 import metrics  # noqa: E402
 import routing  # noqa: E402
 from validate_drawio import validate  # noqa: E402
+import sequence  # noqa: E402
 
 SAMPLES = {
     "flow": """flowchart TD
@@ -446,6 +447,67 @@ def decision_vertices(tmp):
     return problems
 
 
+def sequence_editing(tmp):
+    """A sequence diagram stays editable and measured: each header is grouped with its lifeline, alt/opt/loop/break are umlFrame
+    shapes with the guard beside the tab, and the build reports a layout (a note hiding another lifeline is a defect it names)."""
+    problems = []
+    spec = ("sequenceDiagram\n  participant A as Client\n  participant B as Server\n  A->>B: ping\n  break ping fails\n    B-->>A: error\n  end\n"
+            "  alt cached\n    B->>B: look up\n  else miss\n    B-->>A: 404\n  end\n  loop every 5 s\n    A->>B: poll\n  end\n")
+    (mmd,) = tree(tmp, {"seq/s.mmd": spec})
+    text, _ = build_output(mmd)
+    root = ET.parse(os.path.join(tmp, "seq", "s.drawio")).getroot()
+    cells = {c.get("id"): c for c in root.iter("mxCell")}
+    for pid in "AB":
+        head, life = cells[f"seq-hd-{pid}"], cells[f"seq-ll-{pid}"]
+        group = cells.get(head.get("parent"))
+        if head.get("parent") != life.get("parent") or group is None or group.get("style") != "group":
+            problems.append(f"participant {pid}: the header and the lifeline are not children of one group")
+        elif head.get("parent") in ("0", "1"):
+            problems.append(f"participant {pid}: the group is the page itself")
+    frames = {c.get("value"): c.get("style") for c in cells.values() if "umlFrame" in c.get("style", "")}
+    if sorted(frames) != ["alt", "break", "loop"] or not all(re.search(r"width=\d+;height=\d+;", s) for s in frames.values()):
+        problems.append(f"fragments are not umlFrame shapes with a tab: {frames}")
+    guards = sorted(c.get("value", "") for k, c in cells.items() if k.startswith("seq-fr") and "umlFrame" not in c.get("style", "") and "[" in c.get("value", ""))
+    if len(guards) != 4 or not any("ping fails" in g for g in guards) or any(re.search(r"\b(alt|break|loop)\b", g) for g in guards):
+        problems.append(f"the guards are not texts of their own beside the tabs: {guards}")
+    if "structure: ok (0 errors, 0 warnings)" not in text:
+        problems.append(f"the grouped diagram does not validate: {re.search(r'^structure:.*$', text, re.M)}")
+    layout = re.search(r"^layout: (.*)$", text, re.M)
+    if not layout or "no overlaps" not in layout.group(1):
+        problems.append(f"a clean sequence diagram: the build prints {layout.group(0) if layout else None!r}")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):                                      # `digest` lists what a hand-made file shows: every participant once
+        digest_drawio.main(os.path.join(tmp, "seq", "s.drawio"))
+    shapes = [l for l in out.getvalue().split("EDGES")[0].splitlines() if l.startswith("- ")]
+    if sorted(shapes) != sorted(["- [box] Client", "- [box] Server", "- [box] alt", "- [box] break", "- [box] loop",
+                                 "- [text] [ping fails]", "- [text] [cached]", "- [text] [miss]", "- [text] [every 5 s]"]):
+        problems.append(f"digest of the sequence diagram lists {shapes}")
+    messy = spec + "  Note right of A: a note long enough to run across the lifeline of the server next to it and hide it\n"
+    (mmd,) = tree(tmp, {"messy/m.mmd": messy})
+    text, _ = build_output(mmd)
+    layout = re.search(r"^layout: (.*)$", text, re.M)
+    if not layout or "no overlaps" in layout.group(1) or "lifeline" not in layout.group(1):
+        problems.append(f"a note over another lifeline: the build prints {layout.group(0) if layout else None!r}")
+    text_box = lambda x, y, own=None: ((x, y, 60, 14), own)
+    line = {7: [(0, 20), (200, 20)]}
+    for what, texts, lines, want in (("two texts side by side", [text_box(0, 0), text_box(100, 0)], {}, 0),
+                                     ("two texts on top of each other", [text_box(0, 0), text_box(30, 4)], {}, 2),
+                                     ("a text touching another by 2 px", [text_box(0, 0), text_box(58, 0)], {}, 0),
+                                     ("a text on the line of another message", [text_box(20, 12)], line, 1),
+                                     ("a text on its own message's line", [text_box(20, 12, 7)], line, 0)):
+        got = sequence.clashes(texts, lines)
+        if got != want:
+            problems.append(f"{what}: {got} clashes, expected {want}")
+    example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "examples", "build-pipeline", "build-pipeline.mmd")
+    if os.path.exists(example):
+        model = mermaid.parse(c2d.read_spec(example))
+        emit.build(model)
+        report = getattr(model, "sequence_report", None)
+        if not report or report["clashes"] or report["note_hits"]:
+            problems.append(f"examples/build-pipeline: {report}")
+    return problems
+
+
 def sequence_title_legend(tmp):
     """`title` and `%% legend:` are drawn for sequence diagrams too, and a flowchart title keeps its edges glued."""
     problems = []
@@ -727,6 +789,7 @@ REGRESSIONS = [
     ("layout: decision exits in line across a diamond are counted", inline_exits),
     ("layout: edges attach to a decision at its vertices, arrivals apart from departures", decision_vertices),
     ("layout: edges sharing a decision's vertex fan out from it without counting as drawn on top of each other", vertex_fans),
+    ("sequence: header and lifeline grouped, fragments are umlFrame shapes, layout measured", sequence_editing),
     ("title and legend drawn for every diagram type", sequence_title_legend),
     ("legend: fills without an entry reported, arrow styles accepted as entries", legend_checks),
     ("build: aspect ratio and fill reported, a hint for a long strip", canvas_proportions),

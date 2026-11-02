@@ -21,6 +21,7 @@ You write a short Mermaid spec. One command lays it out, writes the `.drawio` (e
    - `SPEC ERRORS` lists unsupported or malformed lines (nothing is built): fix them, rebuild.
    - `structure` warnings: fix the real ones.
    - `legend: node fills with no legend entry`: nodes are drawn in a colour the `%% legend:` does not explain (decisions are yellow and plain nodes blue unless classed): add an entry for each colour, or give those nodes the colour of an entry. Only checked when the legend has colour entries; start, end and note shapes are exempt.
+   - `layout: sequence;` a sequence diagram is measured too: texts (message labels, notes, frame conditions) lying on one another or on a message line, and notes that hide the lifeline of a participant they do not name (shorten the text, or put the note over the participants). Each header is grouped with its lifeline, and `alt`/`opt`/`loop`/`break` are UML frames (`umlFrame`) with the condition beside the tab.
    - `names ... NOT FOUND in source`: a label does not exist in the `%% src:` files; misspelled or invented? Check and correct (a deliberate pseudo-name is fine).
    - `imports: N solid arrows ... have NO import behind them`: those arrows claim an import that the code does not contain; fix them or draw them dashed.
    - `names: note - N files not read`: binary or very large files were skipped; every other file is searched, whatever its extension.

@@ -135,7 +135,7 @@ sequenceDiagram
 | **Class diagram** (UML) | `classDiagram` | Types, interfaces, members, inheritance, composition |
 | **ER diagram** | `erDiagram` | Database schemas, tables, keys, relationships |
 | **State diagram** | `stateDiagram-v2` | State machines, lifecycles, game or UI states |
-| **Sequence diagram** | `sequenceDiagram` | Call order between components, protocols, request / response flows |
+| **Sequence diagram** | `sequenceDiagram` | Call order between components, protocols, request / response flows. Each header is grouped with its lifeline, `alt` / `opt` / `loop` / `break` are UML frames, and the build measures overlaps |
 | **Import / dependency graph** | scanned by `c2d.py deps` | Module structure of a JS / TS / Python codebase, hubs and leaves |
 
 Nodes, edges, subgraphs, colour classes, legends and notes are supported. The full list of what the Mermaid subset

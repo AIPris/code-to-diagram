@@ -38,6 +38,7 @@ SHAPES = {
     "end": "ellipse;shape=endState;html=1;fillColor=#000000;strokeColor=#000000;",
     "fork": "rounded=0;html=1;fillColor=#000000;strokeColor=#000000;",
     "line": "line;strokeWidth=1;dashed=1;html=1;fillColor=none;strokeColor=#666666;",
+    "frame": "shape=umlFrame;whiteSpace=wrap;html=1;pointerEvents=0;fontStyle=1;fillColor=none;strokeColor=#666666;",   # UML fragment: its label sits in the tab (style width/height)
 }
 EDGE_BASE = "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;"
 EDGES = {
@@ -162,8 +163,13 @@ class Diagram:
     # -- shapes ------------------------------------------------------------------------------------------------
     def box(self, id, label, x, y, w=160, h=60, shape="rounded", color="blue", parent="1", fill=None, stroke=None, font=12, style=""):
         f, s = _colors(color, fill, stroke)
-        look = "" if shape in ("text", "start", "end", "fork", "line") else f"fillColor={f};strokeColor={s};"
+        look = "" if shape in ("text", "start", "end", "fork", "line", "frame") else f"fillColor={f};strokeColor={s};"
         self._cell(id, label_text(label), f"{SHAPES[shape]}{look}fontSize={font};{style}", "vertex", parent, dict(x=x, y=y, width=w, height=h))
+        return id
+
+    def group(self, id, x, y, w, h, parent="1"):
+        """Invisible group: children (parent=<this id>, coordinates relative to it) move together in draw.io. Edges are glued to the children."""
+        self._cell(id, "", "group", "vertex", parent, dict(x=x, y=y, width=w, height=h)).set("connectable", "0")
         return id
 
     def title(self, text, x, y):

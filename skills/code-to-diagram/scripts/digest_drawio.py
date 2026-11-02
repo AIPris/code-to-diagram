@@ -124,6 +124,8 @@ def main(path):
 
     print("\nSHAPES (containers list their rows)")
     for cid in verts:
+        if "group" in style_of(cells[cid][1]):                          # an invisible group only holds shapes that are listed themselves
+            continue
         if parent[cid] in cells and cells[parent[cid]][1].get("vertex") == "1":
             # a child: shown under its container below, unless the container itself has no label (then list it here)
             if label.get(parent[cid]):
