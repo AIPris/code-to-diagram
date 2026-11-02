@@ -9,13 +9,15 @@ Checks (deterministic, no rendering needed):
   E3  no duplicate cell ids
   E4  every cell's parent attribute refers to an existing cell
   E5  every vertex has an mxGeometry with positive width/height
-  E6  every edge has source and target referring to existing cells
+  E6  every edge has source and target referring to existing cells (a sample edge inside a container labelled Legend
+      may have free ends)
   E7  manually-waypointed edge segments do not pass through the bounding
       box of any vertex that is not the edge's source/target (or one of
-      their ancestor containers)
+      their ancestor containers); a loop inside a frame, or beside the
+      lifeline its own end sits on, does not count
   E8  sibling vertices (same parent) do not partially overlap (a vertex fully inside another is W5, not an error)
   W1  edge missing <mxGeometry relative="1">
-  W2  vertex with an empty label (unless it is a separator/spacer style)
+  W2  vertex with an empty label (unless it is a separator/spacer style, or a swatch inside a container labelled Legend)
   W3  sibling vertices closer than 20px (recommended gap is 40px)
   W5  vertex lying fully inside a sibling that is not its container (use swimlane / container=1)
   W6  container whose child rows run past its bottom edge (clipped class/table rows)
@@ -132,7 +134,26 @@ def point_in_box(p, box, tol=1):
 
 def container_like(cell):
     """A lane, group or frame: an edge may legitimately run inside it."""
-    return any(k in cell["style"] for k in ("swimlane", "container=1", "fillColor=none"))
+    return any(k in cell["style"] for k in ("swimlane", "container=1", "fillColor=none", "umlFrame"))
+
+
+def in_legend(cell, cells):
+    """Inside a container labelled Legend: its swatches and sample edges show a style, they are not part of the diagram."""
+    parent = cells.get(cell["parent"])
+    while parent:
+        if parent["vertex"] and re.sub(r"<[^>]*>", "", parent["value"]).strip().lower() == "legend":
+            return True
+        parent = cells.get(parent["parent"])
+    return False
+
+
+def own_lifeline(vertex, edge, cells):
+    """A lifeline that an end of the edge sits on: the loop of a self call runs beside it, not across it."""
+    if "umlLifeline" not in vertex["style"]:
+        return False
+    box = abs_bbox(vertex, cells)
+    ends = [abs_bbox(cells[e], cells) for e in (edge["source"], edge["target"]) if e in cells]
+    return any(b and box_contains(box, b) for b in ends)
 
 
 def seg_hits_rect(p1, p2, rect, margin=2):
@@ -200,7 +221,7 @@ def validate(path):
                 float(g.get("width", 0)) <= 0 or float(g.get("height", 0)) <= 0
             ):
                 errors.append(f"E5: vertex '{cid}' has non-positive width/height")
-            if not c["value"].strip() and not is_spacerish(c, cells):
+            if not c["value"].strip() and not is_spacerish(c, cells) and not in_legend(c, cells):
                 warnings.append(f"W2: vertex '{cid}' has an empty label")
             if "html=1" in c["style"]:
                 stripped = ALLOWED_HTML.sub("", c["value"])
@@ -214,7 +235,8 @@ def validate(path):
             for end in ("source", "target"):
                 ref = c[end]
                 if ref is None:
-                    errors.append(f"E6: edge '{cid}' has no {end}")
+                    if not in_legend(c, cells):
+                        errors.append(f"E6: edge '{cid}' has no {end}")
                 elif ref not in cells:
                     errors.append(f"E6: edge '{cid}' {end} '{ref}' does not exist")
             g = c["geom"]
@@ -231,7 +253,7 @@ def validate(path):
         # explicitly-specified waypoint-to-waypoint segments only
         for i in range(len(pts) - 1):
             for v in cells.values():
-                if not v["vertex"] or v["id"] in skip:
+                if not v["vertex"] or v["id"] in skip or own_lifeline(v, c, cells):
                     continue
                 bb = abs_bbox(v, cells)
                 if bb and seg_hits_rect(pts[i], pts[i + 1], bb):

@@ -13,7 +13,7 @@ The file is uncompressed `mxfile > diagram > mxGraphModel > root`. Cells `id="0"
 </mxCell>
 ```
 
-- **Edges are glued**: `source` and `target` name real cell ids. An edge without them stays behind when someone moves a shape; `c2d.py check` reports it.
+- **Edges are glued**: `source` and `target` name real cell ids. An edge without them stays behind when someone moves a shape; `c2d.py check` reports it (sample edges and swatches inside a container titled `Legend` are exempt).
 - **Containers** (`swimlane` / `container=1`): children use `parent="<container id>"` and coordinates relative to it. Edges stay on `parent="1"`; waypoints (`<Array as="points"><mxPoint x= y=/></Array>`) are then absolute.
 - **Escaping** (labels render as HTML): XML-escape `& < > "` and, to show a literal `<` or `>` in the text, escape twice: `List&amp;lt;Order&amp;gt;`. Single-escaped `&lt;Order&gt;` is read as an HTML tag and the rest of the label disappears. Line break: `&lt;br&gt;`.
 - Anchors on an edge: `exitX=0.5;exitY=1;entryX=0.5;entryY=0;` (fractions of the shape's box).

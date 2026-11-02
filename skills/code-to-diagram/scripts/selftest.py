@@ -503,6 +503,50 @@ def canvas_proportions(tmp):
     return problems
 
 
+def hand_edits(tmp):
+    """`check` accepts what is common in a hand-edited file, a legend with sample edges and swatches, and sequence loops inside
+    frames and along their own lifeline, and still reports the same defects anywhere else."""
+    def codes(*cells):
+        body = "".join(f'<mxCell id="{i}" {a}><mxGeometry {g} as="geometry">{p}</mxGeometry></mxCell>' for i, a, g, p in cells)
+        path = os.path.join(tmp, "hand.drawio")
+        open(path, "w", encoding="utf-8").write('<mxfile><diagram id="d"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>'
+                                                f"{body}</root></mxGraphModel></diagram></mxfile>")
+        errors, warnings, _, _ = validate(path)
+        return sorted({m.split(":")[0] for m in errors + warnings})
+
+    def at(x, y, w, h):
+        return f'x="{x}" y="{y}" width="{w}" height="{h}"'
+    pt = lambda role, x, y: f'<mxPoint x="{x}" y="{y}" as="{role}"/>'
+    legend = lambda title: ("lg", f'value="{title}" style="swimlane;fillColor=#ffffff;" vertex="1" parent="1"', at(400, 40, 200, 120), "")
+    swatch = lambda parent: ("sw", f'value="" style="rounded=0;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="{parent}"', at(10, 40, 30, 20), "")
+    sample = lambda parent, target="": ("se", f'value="" style="endArrow=block;dashed=1;" edge="1" parent="{parent}"' + (f' target="{target}"' if target else ""),
+                                       'relative="1"', pt("sourcePoint", 10, 90) + pt("targetPoint", 40, 90))
+    problems = []
+    for what, cells, want in (
+            ("legend samples inside a container titled Legend", (legend("Legend"), swatch("lg"), sample("lg")), []),
+            ("the same cells in a container of another title", (legend("Key"), swatch("lg"), sample("lg")), ["E6", "W2"]),
+            ("the same cells outside any container", (swatch("1"), sample("1")), ["E6", "W2"]),
+            ("a legend sample edge that names a shape which is not there", (legend("Legend"), sample("lg", "nowhere")), ["E6"])):
+        got = codes(*cells)
+        if got != want:
+            problems.append(f"{what}: {got}, expected {want}")
+    loop = lambda parent, source, target: ("loop", f'value="" style="edgeStyle=none;" edge="1" parent="{parent}" source="{source}" target="{target}"',
+                                         'relative="1"', "<Array as=\"points\">" + '<mxPoint x="190" y="100"/><mxPoint x="190" y="120"/></Array>')
+    bar = lambda i, x, y: (i, 'value="" style="html=1;points=[];" vertex="1" parent="1"', at(x, y, 10, 20), "")
+    life = lambda i, x: (i, 'value="Client" style="shape=umlLifeline;perimeter=lifelinePerimeter;" vertex="1" parent="1"', at(x, 40, 100, 300), "")
+    frame = lambda fill: ("fr", f'value="alt" style="shape=umlFrame;{fill}" vertex="1" parent="1"', at(60, 80, 300, 160), "")
+    rect = ("box", 'value="Other" style="rounded=1;fillColor=#fff2cc;" vertex="1" parent="1"', at(170, 90, 60, 50), "")
+    for what, cells, want in (
+            ("a self call loop along its own lifeline", (life("l1", 100), bar("b1", 145, 90), bar("b2", 145, 120), loop("1", "b1", "b2")), []),
+            ("the same loop across another lifeline", (life("l1", 100), life("l2", 180), bar("b1", 145, 90), bar("b2", 145, 120), loop("1", "b1", "b2")), ["E7"]),
+            ("a self call loop inside a filled umlFrame", (frame("fillColor=#ffffff;"), bar("b1", 145, 90), bar("b2", 145, 120), loop("1", "b1", "b2")), []),
+            ("the same loop through an unrelated shape", (bar("b1", 145, 90), bar("b2", 145, 120), rect, loop("1", "b1", "b2")), ["E7"])):
+        got = codes(*cells)
+        if got != want:
+            problems.append(f"{what}: {got}, expected {want}")
+    return problems
+
+
 def import_arrows(tmp):
     """A solid arrow between two files is judged by those files' own imports, wherever a same-named file lives."""
     tree(tmp, {"src/one/a.js": "", "src/b.js": "", "src/c.js": "", "src/d.js": "", "src/two/a.js": "import '../b.js';\nimport '../c.js';\nimport '../d.js';\n"})
@@ -622,6 +666,7 @@ REGRESSIONS = [
     ("layout: edges sharing a decision's vertex fan out from it without counting as drawn on top of each other", vertex_fans),
     ("title and legend drawn for every diagram type", sequence_title_legend),
     ("build: aspect ratio and fill reported, a hint for a long strip", canvas_proportions),
+    ("check: legend samples, frames and loops of a hand edit accepted, real defects still reported", hand_edits),
     ("imports: arrows checked against the file they name", import_arrows),
     ("deps: distinct ids for files and directories named alike", distinct_ids),
     ("deps: Python import statements in any layout", python_import_statements),
