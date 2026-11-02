@@ -83,6 +83,7 @@ The scripts are tools, not reading material: you never need to open them (`c2d.p
 
 - A solid arrow between nodes that name source files means "imports" and is checked against the code; draw calls, data flow and other relations dashed (`-.->`).
 - Flowchart: in each decision write the main path's edge first; it runs straight down and the other branch goes to the side. Label decision edges (`yes`/`no`, or the condition). One terminator per distinct outcome (status code, final state).
+- Sequence diagrams: `alt`/`else` when a step has alternative outcomes, `opt` for a step that may be skipped, `loop` for repetition. `break [cond]` means the rest of the enclosing fragment is skipped when `cond` holds (an early exit): use it for that alone, and do not follow it with an `alt` that retells the same failure.
 - Labels at most ~30 characters, names exactly as in the code; detail goes into class members or rows, not into long labels.
 - At most 3 colours, each meaning something; name classes by meaning (`hub`, `error`) and add the `%% legend:`.
 - Pipelines and long chains read better `LR`; hierarchies `TB`. A chain longer than ~12 steps: split by phase into subgraphs or use `LR`.
